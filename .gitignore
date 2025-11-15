@@ -1,0 +1,64 @@
+DS_Store
+desktop.ini
+Cargo.lock
+
+## Editor
+*.swp
+*.swo
+Session.vim
+.cproject
+.idea
+*.iml
+.vscode
+.project
+.vim/
+.helix/
+.zed/
+.favorites.json
+.settings/
+.vs/
+.dir-locals.el
+
+.cargo
+
+## Configuration
+config.mk
+config.stamp
+no_llvm_build
+
+## Build
+inst/
+llvm/
+mingw-build/
+build/
+build-rust-analyzer/
+dist/
+unicode-downloads/
+target/
+# Created by `x vendor`
+vendor/
+# Created by default with `src/ci/docker/run.sh`
+obj/
+
+## Tags
+tags
+tags.*
+TAGS
+TAGS.*
+
+## Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+## Node
+node_modules/
+package-lock.json
+## direnv
+.envrc/
+.direnv/
+
+## nix
+flake.nix
+flake.lock
+default.nix

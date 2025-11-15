@@ -1,0 +1,76 @@
+2025-11-13T18:33:53.128160Z  INFO webfs::models::files: Time to read directory: 29.096737ms Total files: 3506
+2025-11-13T18:33:53.160625Z  INFO webfs::models::files: Time to read directory: 28.576806ms Total files: 3506
+2025-11-13T18:45:22.132749Z  INFO webfs::models::files: Time to read directory: 28.959039ms Total files: 3506
+2025-11-13T18:45:22.166028Z  INFO webfs::models::files: Time to read directory: 28.80063ms Total files: 3506
+2025-11-13T18:46:08.287272Z  INFO webfs::models::files: Time to read directory: 29.158954ms Total files: 3506
+2025-11-13T18:46:08.320673Z  INFO webfs::models::files: Time to read directory: 29.033418ms Total files: 3506
+2025-11-13T18:46:47.395443Z  INFO webfs::models::files: Time to read directory: 28.653ms Total files: 3506
+2025-11-13T18:46:47.427746Z  INFO webfs::models::files: Time to read directory: 28.25538ms Total files: 3506
+2025-11-13T18:50:12.286322Z  INFO webfs::models::files: Time to read directory: 30.281348ms Total files: 3506
+2025-11-13T18:50:12.320820Z  INFO webfs::models::files: Time to read directory: 29.856336ms Total files: 3506
+2025-11-13T18:51:25.494354Z  INFO webfs::models::files: Time to read directory: 27.145115ms Total files: 3506
+2025-11-13T18:51:25.532992Z  INFO webfs::models::files: Time to read directory: 31.3699ms Total files: 3506
+2025-11-13T18:52:55.393168Z  INFO webfs::models::files: Time to read directory: 29.811983ms Total files: 3506
+2025-11-13T18:52:55.429564Z  INFO webfs::models::files: Time to read directory: 29.292082ms Total files: 3506
+2025-11-13T18:53:46.756750Z  INFO webfs::models::files: Time to read directory: 29.033144ms Total files: 3506
+2025-11-13T18:53:46.792413Z  INFO webfs::models::files: Time to read directory: 28.512693ms Total files: 3506
+2025-11-13T20:12:21.398089Z  WARN rssfeed: Application started
+2025-11-13T20:12:21.401789Z  INFO rssfeed: ---------------------------------------------------------
+2025-11-13T20:12:21.404314Z  INFO rssfeed: Refreshing RSS Channel videos-all /ntc/tmp/en-videos.rss
+2025-11-13T20:12:21.598330Z  INFO webfs::models::files: Time to read directory: 191.531719ms Total files: 3506
+2025-11-13T20:12:21.609357Z  INFO rssfeed: 1: zsv251113-01a-01z-JosephLand-ALC588WMMPrayer(92,140KB).mp4 JosephLand
+2025-11-13T20:12:21.612116Z  INFO rssfeed: 2: zsv251113-02r-01-JosephLand-Report(90,863KB).mp4 JosephLand
+2025-11-13T20:12:21.614607Z  INFO rssfeed: 3: zsv251113-02r-02-JosephLand-Report(90,954KB).mp4 JosephLand
+2025-11-13T20:12:21.617108Z  INFO rssfeed: 4: zsv251113-02r-03-JosephLand-Report(91,012KB).mp4 JosephLand
+2025-11-13T20:12:21.619584Z  INFO rssfeed: 5: zsv251113-02r-04-JosephLand-Report(90,919KB).mp4 JosephLand
+2025-11-13T20:12:21.621997Z  INFO rssfeed: 6: zsv251113-02r-05-JosephLand-Report(91,004KB).mp4 JosephLand
+2025-11-13T20:12:21.624411Z  INFO rssfeed: 7: zsv251113-02r-06-JosephLand-Report(90,911KB).mp4 JosephLand
+2025-11-13T20:12:21.626902Z  INFO rssfeed: 8: zsv251113-02r-07-JosephLand-Report(90,927KB).mp4 JosephLand
+2025-11-13T20:12:21.629310Z  INFO rssfeed: 9: zsv251113-02r-08-JosephLand-Report(91,015KB).mp4 JosephLand
+2025-11-13T20:12:21.631820Z  INFO rssfeed: 10: zsv251113-02r-09-JosephLand-Report(90,933KB).mp4 JosephLand
+2025-11-13T20:12:21.634309Z  INFO rssfeed: RSS feed written to /ntc/tmp/en-videos.rss with 353 entries
+2025-11-13T20:12:21.639414Z  WARN rssfeed: Application started
+2025-11-13T20:12:21.642858Z  INFO rssfeed: ---------------------------------------------------------
+2025-11-13T20:12:21.645325Z  INFO rssfeed: Refreshing RSS Channel videos-all /ntc/tmp/videos.rss
+2025-11-13T20:12:21.837660Z  INFO webfs::models::files: Time to read directory: 189.808967ms Total files: 3506
+2025-11-13T20:12:21.848007Z  INFO rssfeed: 1: zsv251113-01a-01z-JosephLand-ALC588WMMPrayer(92,140KB).mp4 JosephLand
+2025-11-13T20:12:21.850482Z  INFO rssfeed: 2: zsv251113-02r-01-JosephLand-Report(90,863KB).mp4 JosephLand
+2025-11-13T20:12:21.853017Z  INFO rssfeed: 3: zsv251113-02r-02-JosephLand-Report(90,954KB).mp4 JosephLand
+2025-11-13T20:12:21.855513Z  INFO rssfeed: 4: zsv251113-02r-03-JosephLand-Report(91,012KB).mp4 JosephLand
+2025-11-13T20:12:21.857963Z  INFO rssfeed: 5: zsv251113-02r-04-JosephLand-Report(90,919KB).mp4 JosephLand
+2025-11-13T20:12:21.860411Z  INFO rssfeed: 6: zsv251113-02r-05-JosephLand-Report(91,004KB).mp4 JosephLand
+2025-11-13T20:12:21.862919Z  INFO rssfeed: 7: zsv251113-02r-06-JosephLand-Report(90,911KB).mp4 JosephLand
+2025-11-13T20:12:21.865417Z  INFO rssfeed: 8: zsv251113-02r-07-JosephLand-Report(90,927KB).mp4 JosephLand
+2025-11-13T20:12:21.867893Z  INFO rssfeed: 9: zsv251113-02r-08-JosephLand-Report(91,015KB).mp4 JosephLand
+2025-11-13T20:12:21.870311Z  INFO rssfeed: 10: zsv251113-02r-09-JosephLand-Report(90,933KB).mp4 JosephLand
+2025-11-13T20:12:21.872817Z  INFO rssfeed: RSS feed written to /ntc/tmp/videos.rss with 353 entries
+2025-11-13T20:13:19.572637Z  WARN rssfeed: Application started
+2025-11-13T20:13:19.577042Z  INFO rssfeed: ---------------------------------------------------------
+2025-11-13T20:13:19.579463Z  INFO rssfeed: Refreshing RSS Channel videos-all /ntc/tmp/en-videos.rss
+2025-11-13T20:13:19.774542Z  INFO webfs::models::files: Time to read directory: 192.543658ms Total files: 3506
+2025-11-13T20:13:19.784819Z  INFO rssfeed: 1: zsv251113-01a-01z-JosephLand-ALC588WMMPrayer(92,140KB).mp4 JosephLand
+2025-11-13T20:13:19.787378Z  INFO rssfeed: 2: zsv251113-02r-01-JosephLand-Report(90,863KB).mp4 JosephLand
+2025-11-13T20:13:19.789872Z  INFO rssfeed: 3: zsv251113-02r-02-JosephLand-Report(90,954KB).mp4 JosephLand
+2025-11-13T20:13:19.792350Z  INFO rssfeed: 4: zsv251113-02r-03-JosephLand-Report(91,012KB).mp4 JosephLand
+2025-11-13T20:13:19.794763Z  INFO rssfeed: 5: zsv251113-02r-04-JosephLand-Report(90,919KB).mp4 JosephLand
+2025-11-13T20:13:19.797134Z  INFO rssfeed: 6: zsv251113-02r-05-JosephLand-Report(91,004KB).mp4 JosephLand
+2025-11-13T20:13:19.799557Z  INFO rssfeed: 7: zsv251113-02r-06-JosephLand-Report(90,911KB).mp4 JosephLand
+2025-11-13T20:13:19.801947Z  INFO rssfeed: 8: zsv251113-02r-07-JosephLand-Report(90,927KB).mp4 JosephLand
+2025-11-13T20:13:19.804371Z  INFO rssfeed: 9: zsv251113-02r-08-JosephLand-Report(91,015KB).mp4 JosephLand
+2025-11-13T20:13:19.806761Z  INFO rssfeed: 10: zsv251113-02r-09-JosephLand-Report(90,933KB).mp4 JosephLand
+2025-11-13T20:13:19.809247Z  INFO rssfeed: RSS feed written to /ntc/tmp/en-videos.rss with 353 entries
+2025-11-13T20:13:19.814275Z  WARN rssfeed: Application started
+2025-11-13T20:13:19.817641Z  INFO rssfeed: ---------------------------------------------------------
+2025-11-13T20:13:19.820073Z  INFO rssfeed: Refreshing RSS Channel videos-all /ntc/tmp/videos.rss
+2025-11-13T20:13:20.015101Z  INFO webfs::models::files: Time to read directory: 192.504744ms Total files: 3506
+2025-11-13T20:13:20.025830Z  INFO rssfeed: 1: zsv251113-01a-01z-JosephLand-ALC588WMMPrayer(92,140KB).mp4 JosephLand
+2025-11-13T20:13:20.028408Z  INFO rssfeed: 2: zsv251113-02r-01-JosephLand-Report(90,863KB).mp4 JosephLand
+2025-11-13T20:13:20.030865Z  INFO rssfeed: 3: zsv251113-02r-02-JosephLand-Report(90,954KB).mp4 JosephLand
+2025-11-13T20:13:20.033372Z  INFO rssfeed: 4: zsv251113-02r-03-JosephLand-Report(91,012KB).mp4 JosephLand
+2025-11-13T20:13:20.035866Z  INFO rssfeed: 5: zsv251113-02r-04-JosephLand-Report(90,919KB).mp4 JosephLand
+2025-11-13T20:13:20.038274Z  INFO rssfeed: 6: zsv251113-02r-05-JosephLand-Report(91,004KB).mp4 JosephLand
+2025-11-13T20:13:20.040780Z  INFO rssfeed: 7: zsv251113-02r-06-JosephLand-Report(90,911KB).mp4 JosephLand
+2025-11-13T20:13:20.043275Z  INFO rssfeed: 8: zsv251113-02r-07-JosephLand-Report(90,927KB).mp4 JosephLand
+2025-11-13T20:13:20.045754Z  INFO rssfeed: 9: zsv251113-02r-08-JosephLand-Report(91,015KB).mp4 JosephLand
+2025-11-13T20:13:20.048119Z  INFO rssfeed: 10: zsv251113-02r-09-JosephLand-Report(90,933KB).mp4 JosephLand
+2025-11-13T20:13:20.050578Z  INFO rssfeed: RSS feed written to /ntc/tmp/videos.rss with 353 entries

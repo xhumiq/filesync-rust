@@ -1,0 +1,19 @@
+{
+  "name": "webui",
+  "version": "0.1.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tailwindcss -i public/styles.css -o public/styles-built.css --watch --content \"src/**/*.rs\" --config tailwind.config.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build-css": "tailwindcss -i public/styles.css -o public/styles-built.css --content \"src/**/*.rs\" --config tailwind.config.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "autoprefixer": "^10.4.16",
+    "daisyui": "^4.12.10",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.18"
+  }
+}
