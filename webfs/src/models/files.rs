@@ -253,17 +253,12 @@ impl Channel {
             .collect();
         Ok(files)
     }
-    pub fn set_entries(&mut self, entries: Vec<MediaEntry>, start_date: Option<NaiveDate>) {
+    pub fn set_entries(&mut self, entries: Vec<MediaEntry>) {
         let mut files: Vec<MediaEntry> = if self.filter_extension.is_empty() || self.filter_extension == "*" {
             entries
         } else {
             entries.into_iter().filter(|e| e.file_name.ends_with(&self.filter_extension)).collect()
         };
-        if let Some(start_date) = start_date {
-            files = files.into_iter().filter(|entry| {
-                entry.pub_date >= start_date
-            }).collect();
-        }
         if files.len() > 0 {
             if files[0].link.contains("Pictures") || files[0].link.contains("Path"){
                 println!("First media type: {} {}", files[0].location, files[0].event);
@@ -343,7 +338,7 @@ impl Channel {
         files
     }
 
-    pub fn write_rss<W: std::io::Write>(&mut self, writer: &mut Writer<W>) -> Result<()> {
+    pub fn write_rss<W: std::io::Write>(&mut self, writer: &mut Writer<W>, start_date: Option<NaiveDate>) -> Result<()> {
 
         // Start RSS root element
         let mut rss_start = BytesStart::new("rss");
@@ -377,8 +372,16 @@ impl Channel {
         let subtitle = format!("{} Pub: {}", &self.title, now.format("%a %b %d %H:%M:%S %Z %Y"));
         write_element(writer, "itunes:subtitle", &subtitle)?;
 
+        let mut files = self.entries.clone();
+
+        if let Some(start_date) = start_date {
+            files = files.into_iter().filter(|entry| {
+                entry.pub_date >= start_date
+            }).collect();
+        }
+
         // Add items for each entry
-        for entry in &self.entries {
+        for entry in &files {
             entry.write_rss_item(writer, &self.media_link)?;
         }
 
@@ -880,3 +883,4 @@ lazy_static! {
         map
     };
 }
+

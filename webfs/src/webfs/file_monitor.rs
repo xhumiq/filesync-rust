@@ -20,12 +20,18 @@ use bincode::serialize;
 const FILENAMES_TABLE: TableDefinition<&str, ()> = TableDefinition::new("filenames");
 const FILEDESC_TABLE: TableDefinition<&str, Vec<u8>> = TableDefinition::new("filedesc");
 
-pub async fn start_file_monitor(db_path: &str, config: &Config, pattern: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let db = Database::create(db_path)?;
+pub struct MonitorConfig{
+    pub config: Config,
+    pub db_path: String,
+    pub video_descr_file_pattern: String,
+    pub rss_days: i32,
+    pub rss_output_path: String,
+    pub video_list_path: String,    
+}
 
-    let channel = config.channels.get("en")
-        .and_then(|m| m.get("videos-all"))
-        .expect("No videos-all channel found in config");
+pub async fn start_file_monitor(config: &MonitorConfig, cache: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (crate::models::files::Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<(), Box<dyn std::error::Error>> {
+    let pattern = config.video_descr_file_pattern.as_str();
+    let db = Database::create(&config.db_path)?;
 
     // Ensure the table exists
     {
@@ -37,30 +43,36 @@ pub async fn start_file_monitor(db_path: &str, config: &Config, pattern: &str) -
 
     let regex = Regex::new(pattern)?;
 
-    let start_date = std::env::var("RSS_DAYS").unwrap_or("7".to_string()).parse::<i32>().ok()
-        .map(|days| Utc::now().date_naive() - chrono::Duration::days(days.abs() as i64));
-
-    let channel = channel.clone();
-    let regex = regex.clone();
-    let config_clone = config.clone();
+    let scan_path = config.video_list_path.clone();
     tokio::spawn(async move {
         let mut interval = time::interval(Duration::from_secs(5)); // Poll every 5 seconds
         loop {
             interval.tick().await;
-            tracing::info!("Scanning files... {}", channel.file_path);
-            if let Err(e) = scan_and_store(&db, &channel, &regex).await {
+            tracing::info!("Scanning files... {}", scan_path);
+            if let Err(e) = scan_and_store(&db, scan_path.as_str(), &regex).await {
                 tracing::error!("Error scanning files: {}", e);
-            }
-            if let Err(e) = write_rss(config_clone.channels.values().flat_map(|m| m.iter()).collect(), start_date){
-                tracing::error!("Error writing RSS: {}", e);
             }
         }
     });
-
+    if config.rss_days < 0{
+        let start_date = Utc::now().date_naive() - chrono::Duration::days(config.rss_days.abs() as i64);
+        let rss_channels: Vec<(String, Channel)> = config.config.channels.values().flat_map(|m| m.iter().map(|(k,v)| (k.clone(), v.clone()))).collect();
+        tokio::spawn(async move {
+            let mut interval = time::interval(Duration::from_secs(5)); // Poll every 5 seconds
+            loop {
+                interval.tick().await;
+                if let Err(e) = write_rss(&rss_channels, start_date, &cache){
+                    tracing::error!("Error writing RSS: {}", e);
+                }
+            }
+        });
+    }else{
+        tracing::warn!("RSS Refresh Skipped");
+    }
     Ok(())
 }
 
-fn write_rss(channels_to_process: Vec<(&String, &Channel)>, start_date: Option<NaiveDate>) -> Result<()> {
+fn write_rss(channels_to_process: &[(String, Channel)], start_date: NaiveDate, cache: &std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<()> {
     tracing::info!("Processing {} channels", channels_to_process.len());
     for (channel_name, ch) in channels_to_process {
 
@@ -83,19 +95,24 @@ fn write_rss(channels_to_process: Vec<(&String, &Channel)>, start_date: Option<N
 
         // Process entries
         let mut ch = ch.clone();
-        ch.set_entries(entries, start_date);
+        ch.set_entries(entries);
+
+        // Cache the channel
+        {
+            let mut cache = cache.lock().unwrap();
+            cache.insert(channel_name.to_string(), (ch.clone(), Utc::now()));
+        }
 
         // Write RSS
-        ch.write_rss(&mut writer)?;
+        ch.write_rss(&mut writer, Some(start_date))?;
 
         tracing::info!("RSS feed written to {} with {} entries", output_path, ch.entries.len());
     }
     Ok(())
 }
 
-async fn scan_and_store(db: &Database, channel: &Channel, regex: &Regex) -> Result<()> {
-    let path = Path::new(channel.file_path.as_str());
-
+async fn scan_and_store(db: &Database, scan_path: &str, regex: &Regex) -> Result<()> {
+    let path = Path::new(scan_path);
     let mut current_files = HashSet::new();
 
     if let Ok(entries) = fs::read_dir(path) {

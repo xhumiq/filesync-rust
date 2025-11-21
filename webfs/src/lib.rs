@@ -6,6 +6,8 @@ use reqwest::Client;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use chrono::{DateTime, Utc};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, fmt::MakeWriter};
 
 #[derive(Clone)]
@@ -17,6 +19,7 @@ pub struct AppState {
     pub base_path: String,
     pub http_client: Client,
     pub config: models::files::Config,
+    pub channel_cache: Arc<Mutex<HashMap<String, (models::files::Channel, DateTime<Utc>)>>>,
 }
 
 pub fn init_tracing(log_path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

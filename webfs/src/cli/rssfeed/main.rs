@@ -98,10 +98,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
         // Process entries
         let mut ch = ch.clone();
-        ch.set_entries(entries, start_date);
+        ch.set_entries(entries);
 
         // Write RSS
-        ch.write_rss(&mut writer)?;
+        ch.write_rss(&mut writer, start_date)?;
 
         // Print first ten file names of sorted entries in channel
         for (i, entry) in ch.entries.iter().take(10).enumerate() {

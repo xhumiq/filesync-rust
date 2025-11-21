@@ -44,4 +44,4 @@ deploy-fs:
 	&& s5cmd --endpoint-url ${S3_URL} \
 		--profile deploy \
 		--credentials-file ${HOME}/.config/cloud-cli/.linode \
-		cp ${PACKAGE_FOLDER}/webfs-latest.tar.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-v${BUILD_VER}.zst
+		cp ${PACKAGE_FOLDER}/webfs-latest.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-v${BUILD_VER}.zst
