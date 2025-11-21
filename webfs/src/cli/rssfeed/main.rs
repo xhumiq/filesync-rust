@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
+use std::result::Result;
 use chrono::{Utc};
 use clap::{Arg, Command};
 use quick_xml::Writer;
@@ -10,9 +11,9 @@ fn default_filter_extension() -> String {
     "".to_string()
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv::dotenv().ok();
-    webfs::init_tracing("../logs/rssfeed.log");
+    webfs::init_tracing("../logs/rssfeed.log")?;
     tracing::info!("Application started");
 
     let matches = Command::new("rss_writer")
@@ -42,11 +43,10 @@ fn main() -> Result<()> {
             .default_value("/opt/webdav/logs/rssfeed/rssfeed.log"))
         .get_matches();
 
-    let log_file = matches.get_one::<String>("log_file").unwrap();
-
-    let channel_arg = matches.get_one::<String>("channel").unwrap();
-    let config_path = matches.get_one::<String>("config").unwrap();
-    let language = matches.get_one::<String>("language").unwrap();
+    let log_file = matches.get_one::<String>("log_file").ok_or("log_file argument missing")?;
+    let channel_arg = matches.get_one::<String>("channel").ok_or("channel argument missing")?;
+    let config_path = matches.get_one::<String>("config").ok_or("config argument missing")?;
+    let language = matches.get_one::<String>("language").ok_or("language argument missing")?;
     let start_date = matches.get_one::<String>("days")
         .and_then(|s| s.parse::<i32>().ok())
         .map(|days| Utc::now().date_naive() - chrono::Duration::days(days.abs() as i64));

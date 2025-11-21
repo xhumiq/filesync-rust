@@ -122,7 +122,7 @@ async fn scan_and_store(db: &Database, channel: &Channel, regex: &Regex) -> Resu
 
     for file in &new_files {
         let fullpath = path.join(file.clone());
-        match read_file_descriptor(fullpath.to_str().unwrap()) {
+        match read_file_descriptor(fullpath.to_str().unwrap_or("invalid_path")) {
             Ok(records) => {
                 let txn = db.begin_write()?;
                 {
@@ -133,10 +133,10 @@ async fn scan_and_store(db: &Database, channel: &Channel, regex: &Regex) -> Resu
                     }
                 }
                 txn.commit()?;
-                tracing::info!("Read {} descriptors from {}", records.len(), fullpath.to_str().unwrap());
+                tracing::info!("Read {} descriptors from {}", records.len(), fullpath.to_str().unwrap_or("invalid_path"));
 
             },
-            Err(e) => tracing::error!("Error reading file descriptor for {}: {}", fullpath.to_str().unwrap(), e),
+            Err(e) => tracing::error!("Error reading file descriptor for {}: {}", fullpath.to_str().unwrap_or("invalid_path"), e),
         }
     }
 
@@ -153,11 +153,7 @@ async fn scan_and_store(db: &Database, channel: &Channel, regex: &Regex) -> Resu
 }
 
 lazy_static! {
-    static ref RE_ZSV_VIDEO_ID: Regex = Regex::new(r"^zsv(\d{6}[e]?)-(\d{1,3}[a-z]?)-(?:(\d{1,3}[a-z]?)-)?").unwrap();
-    static ref RE_MULTIPLE_SPACES: Regex = Regex::new(r" +").unwrap();
-    static ref RE_ALC588WMM: Regex = Regex::new(r"ALC 588 WMM").unwrap();
-    static ref RE_ALC588: Regex = Regex::new(r"ALC 588").unwrap();
-    static ref RE_DATE_DIGITS: Regex = Regex::new(r"\b(\d{6})\b").unwrap();
+    static ref RE_ZSV_VIDEO_ID: Regex = Regex::new(r"^zsv(\d{6}[e]?)-(\d{1,3}[a-z]?)-(?:(\d{1,3}[a-z]?)-)?").expect("Invalid regex RE_ZSV_VIDEO_ID");
 }
 
 pub fn read_file_descriptor(path: &str) -> Result<Vec<FileDesc>> {
@@ -232,7 +228,7 @@ pub fn read_file_descriptor(path: &str) -> Result<Vec<FileDesc>> {
         // separated by the transition from ASCII to Chinese characters.
         let full = cells[1];
 
-        let first_chinese_byte = full.char_indices().find(|(_, c)| is_chinese(*c)).map(|(i, _)| i);
+        let first_chinese_byte = full.char_indices().find(|(_, c)| crate::models::formatter::is_chinese(*c)).map(|(i, _)| i);
         let (fname, chi_descr) = if let Some(pos) = first_chinese_byte {
             let name_part = full[..pos].trim();
             let desc_part = full[pos..].trim();
@@ -242,10 +238,10 @@ pub fn read_file_descriptor(path: &str) -> Result<Vec<FileDesc>> {
         };
 
         if let Some(caps) = RE_ZSV_VIDEO_ID.captures(&fname) {
-            let prefix: &str = caps.get(0).unwrap().as_str();
+            let prefix: &str = caps.get(0).expect("No match group 0").as_str();
             let id = format!("zsv{}-{}", &caps[1], &caps[2]);
             let mut eng_descr = fname.as_str().strip_prefix(prefix).unwrap_or(fname.as_str()).to_string();
-            eng_descr = format_eng_descr(&eng_descr);
+            eng_descr = crate::models::formatter::format_eng_descr(&eng_descr);
 
             let file_desc = FileDesc {
                 id: id.to_string(),
@@ -280,72 +276,4 @@ fn extract_text_from_cell(cell: &TableCell) -> String {
         }
     }
     text
-}
-
-// ---------------------------------------------------------------------
-// Helper: check if a character is Chinese
-// ---------------------------------------------------------------------
-fn is_chinese(c: char) -> bool {
-    // CJK Unified Ideographs
-    ('\u{4e00}' <= c && c <= '\u{9fff}') ||
-    // CJK Extension A
-    ('\u{3400}' <= c && c <= '\u{4dbf}') ||
-    // CJK Extension B
-    ('\u{20000}' <= c && c <= '\u{2a6df}') ||
-    // CJK Extension C
-    ('\u{2a700}' <= c && c <= '\u{2b73f}')
-}
-
-// ---------------------------------------------------------------------
-// Helper: extract Chinese characters from a string
-// ---------------------------------------------------------------------
-fn extract_chinese(s: &str) -> String {
-    s.chars()
-        .filter(|c| is_chinese(*c))
-        .collect()
-}
-
-// ---------------------------------------------------------------------
-// Helper: format name by inserting spaces before capital letters followed by lowercase, between letters and digits, replacing dashes with spaces, and formatting 6-digit dates
-// ---------------------------------------------------------------------
-fn format_eng_descr(s: &str) -> String {
-    // Now apply spacing
-    let chars: Vec<char> = s.chars().collect();
-    let mut result = String::new();
-    let mut prev_is_digit = false;
-    let mut prev_is_letter = false;
-    for i in 0..chars.len() {
-        let c = chars[i];
-        let is_digit = c.is_ascii_digit();
-        let is_letter = c.is_alphabetic();
-        if i > 0 && chars[i-1].is_lowercase() && c.is_uppercase() {
-            result.push(' ');
-        }
-        if i > 0 && ((prev_is_letter && is_digit) || (prev_is_digit && is_letter)) {
-            result.push(' ');
-        }
-        if c == '-' {
-            result.push(' ');
-        } else {
-            result.push(c);
-        }
-        prev_is_digit = is_digit;
-        prev_is_letter = is_letter;
-    }
-    // Replace multiple spaces with single space
-    let result = RE_MULTIPLE_SPACES.replace_all(&result, " ").to_string();
-    let result = RE_ALC588WMM.replace_all(&result, "ALC/588/WMM").to_string();
-    let result = RE_ALC588.replace_all(&result, "ALC/588").to_string();
-
-    use chrono::NaiveDate;
-    // First, replace 6-digit dates
-    RE_DATE_DIGITS.replace_all(&result, |caps: &regex::Captures| {
-        let digits = &caps[1];
-        if let Ok(date) = NaiveDate::parse_from_str(digits, "%y%m%d") {
-            date.format("%Y-%m-%d").to_string()
-        } else {
-            digits.to_string()
-        }
-    }).to_string()
-
 }

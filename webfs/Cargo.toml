@@ -2,6 +2,7 @@
 name = "webfs"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [lib]
 name = "webfs"
@@ -11,9 +12,10 @@ path = "src/lib.rs"
 axum = "0.7"
 docx-rs = "0.4"          # reads .docx files
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.5", features = ["cors", "fs"] }
 dotenv = "0.15"
 jsonwebtoken = "9"
 serde_json = "1.0"
@@ -32,6 +34,13 @@ serde_yaml = "0.9.34"
 clap = { version = "4.0", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter", "chrono"] }
+tower-service = "0.3.3"
+tower = "0.5.2"
+hyper = "1"
+mime_guess = "2.0.5"
+built = "0.8"
+vergen = "9.0.6"
+vergen-git2 = "1.0.7"
 
 [[bin]]
 name = "webfs"  # ← Custom executable name
@@ -44,3 +53,7 @@ path = "src/cli/rssfeed/main.rs"
 [[bin]]
 name = "utils"  # ← Custom executable name
 path = "src/cli/utils/main.rs"
+
+[build-dependencies]
+built = { version = "0.8", features = ["git2"] }
+vergen-git2 = { version = "1.0.0", features = ["build", "cargo", "rustc", "si"] }

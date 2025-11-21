@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tailwindcss -i public/styles.css -o public/styles-built.css --watch --content \"src/**/*.rs\" --config tailwind.config.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build-css": "tailwindcss -i public/styles.css -o public/styles-built.css --content \"src/**/*.rs\" --config tailwind.config.js"
+    "build-css": "tailwindcss -i public/styles.css -o public/styles-built.css --content \"src/**/*.rs\" --config tailwind.config.js --minify"
   },
   "author": "",
   "license": "ISC",

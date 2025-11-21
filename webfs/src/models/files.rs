@@ -1,12 +1,11 @@
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use chrono::prelude::*;
 use regex::Regex;
 use lazy_static::lazy_static;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
-use chrono::{DateTime, Utc, Local, NaiveDate, Duration};
+use chrono::{DateTime, Utc, Local, NaiveDate};
 use anyhow::Result;
 use std::collections::HashMap;
 use tracing;
@@ -265,7 +264,20 @@ impl Channel {
                 entry.pub_date >= start_date
             }).collect();
         }
-        files = Self::clean_pub_date(files);
+        if files.len() > 0 {
+            if files[0].link.contains("Pictures") || files[0].link.contains("Path"){
+                println!("First media type: {} {}", files[0].location, files[0].event);
+                files = Self::sort_photo_entries(files);
+            }else{
+                files = super::formatter::clean_pub_date(files);
+                files = Self::sort_av_entries(files);
+            }
+        }
+        self.entries = files;
+    }
+
+    fn sort_av_entries(mut files: Vec<MediaEntry>) -> Vec<MediaEntry> {
+        println!("Sorting AV entries");
         files.sort_by(|a, b| {
             let mut date_cmp = b.file_date_stamp.cmp(&a.file_date_stamp);
             if date_cmp == std::cmp::Ordering::Equal {
@@ -279,7 +291,7 @@ impl Channel {
                 date_cmp
             }
         });
-        // Adjust pub_date to add days for same date entries
+        // Adjust pub_date to add seconds for same date entries
         let mut groups: HashMap<String, Vec<&mut MediaEntry>> = HashMap::new();
         for entry in &mut files {
             groups.entry(entry.file_date_stamp.clone()).or_insert(Vec::new()).push(entry);
@@ -289,46 +301,46 @@ impl Channel {
                 let base_time = group[0].pub_date;
                 let len = group.len() as i64;
                 for (i, entry) in group.iter_mut().enumerate() {
-                    entry.pub_date = base_time + chrono::Duration::days(len - 1 - i as i64);
+                    entry.pub_date = base_time + chrono::Duration::seconds(len - 1 - i as i64);
                 }
             }
         }
-        self.entries = files;
+        files
     }
 
-    fn clean_pub_date(entries: Vec<MediaEntry>) -> Vec<MediaEntry> {
-        let mut groups: HashMap<NaiveDate, Vec<MediaEntry>> = HashMap::new();
-        for entry in entries {
-            groups.entry(entry.pub_date).or_insert(Vec::new()).push(entry);
+    fn sort_photo_entries(mut files: Vec<MediaEntry>) -> Vec<MediaEntry> {
+        files.sort_by(|a, b| {
+            let mut date_cmp = b.file_date_stamp.cmp(&a.file_date_stamp);
+            if date_cmp == std::cmp::Ordering::Equal {
+                date_cmp = a.location.cmp(&b.location);
+                if date_cmp == std::cmp::Ordering::Equal {
+                    date_cmp = a.event_code.cmp(&b.event_code);
+                    if date_cmp == std::cmp::Ordering::Equal {
+                        return a.event_date_stamp.cmp(&b.event_date_stamp);
+                    }else{
+                        date_cmp
+                    }
+                } else {
+                    date_cmp
+                }
+            } else {
+                date_cmp
+            }
+        });
+        let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, entry) in files.iter().enumerate() {
+            groups.entry(format!("{}{}", entry.file_date_stamp, entry.location)).or_insert(Vec::new()).push(i);
         }
-        let mut result = Vec::new();
-        for (pub_date_date, mut group) in groups {
-            group.sort_by_key(|e| e.modified);
-            if let Some(first) = group.first() {
-                let first_modified = first.modified;
-                let cutoff = first_modified + Duration::hours(1).to_std().unwrap();
-                let base_entry = group.iter().rev().find(|e| e.modified <= cutoff).unwrap_or(first);
-                let mut base_time = base_entry.modified;
-                let base_date = DateTime::<Utc>::from(base_time).date_naive();
-                if base_date.day() != pub_date_date.day() {
-                    let adjusted_date = pub_date_date + Duration::days(1);
-                    let adjusted_datetime = adjusted_date.and_hms_opt(23, 59, 59).unwrap();
-                    base_time = DateTime::<Utc>::from_naive_utc_and_offset(adjusted_datetime, Utc).into();
-                }
-                base_time = base_time - std::time::Duration::from_secs((group.len() + 1) as u64);
-                // if base_time has a time of day at 0 zero hours and zero minuites and zero seconds then add 5 minutes to it
-                let dt = DateTime::<Local>::from(base_time);
-                if dt.hour() == 0 && dt.minute() == 0 && dt.second() == 0 {
-                    base_time = (dt + chrono::Duration::minutes(5)).into();
-                }
-                for mut entry in group {
-                    // Convert base_time back to NaiveDate for pub_date
-                    entry.pub_date = DateTime::<Utc>::from(base_time).date_naive();
-                    result.push(entry);
+        for (_date_stamp, indices) in groups {
+            if indices.len() == 1 {
+                files[indices[0]].event_code = "".to_string();
+            }else{
+                for idx in indices {
+                    println!("{} {} {} {}", idx, files[idx].location, files[idx].event_code, files[idx].file_name);
                 }
             }
         }
-        result
+        files
     }
 
     pub fn write_rss<W: std::io::Write>(&mut self, writer: &mut Writer<W>) -> Result<()> {
@@ -419,7 +431,7 @@ impl Default for MediaEntry {
             event_date_stamp: String::new(),
             media_type: String::new(),
             size: 0,
-            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).unwrap(),
+            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Invalid default date"),
             modified: std::time::UNIX_EPOCH,
         }
     }
@@ -445,8 +457,40 @@ impl MediaEntry {
         }
 
         let path_str = entry.path().to_string_lossy().to_string();
-        let mut fi = parseFileName(&path_str);
-        fi.file_name = entry.file_name().to_string_lossy().to_string();
+        let mut fi = parse_file_name(&path_str);
+        if fi.file_name.is_empty() {
+            fi.file_name = entry.file_name().to_string_lossy().to_string();
+        }
+        fi.size = metadata.len();
+        fi.modified = metadata.modified()?;
+        // Set pub_date based on file_date_stamp if valid, otherwise use modified time
+        fi.pub_date = if let Ok(date) = NaiveDate::parse_from_str(&fi.file_date_stamp, "%y%m%d") {
+            date
+        } else {
+            let modified_dt = DateTime::<Utc>::from(metadata.modified()?);
+            let date = modified_dt.date_naive();
+            fi.file_date_stamp = date.format("%y%m%d").to_string();
+            date
+        };
+        if fi.content_type == "photos"{
+            let event_str = fi.event.clone();
+            fi.normalize_date_range(&event_str);
+        }
+        fi.guid = format!("{}/{}", channel.server_name, fi.file_name);
+        fi.fill_rss_fields(channel);
+        Ok(fi)
+    }
+
+    pub fn photo_entry(entry: std::fs::DirEntry, channel: &Channel) -> std::io::Result<Self> {
+        let metadata = entry.metadata()?;
+        if !metadata.is_file() {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "not a file"));
+        }
+        let path_str = entry.path().to_string_lossy().to_string();
+        let mut fi = parse_photo_archive_name(&path_str);
+        if fi.file_name.is_empty() {
+            fi.file_name = entry.file_name().to_string_lossy().to_string();
+        }
         fi.size = metadata.len();
         fi.modified = metadata.modified()?;
         // Set pub_date based on file_date_stamp if valid, otherwise use modified time
@@ -463,21 +507,27 @@ impl MediaEntry {
         Ok(fi)
     }
 
-    fn format_event_date(ed: &str) -> String {
-        if ed.len() == 6 {
-            format!(" 20{}-{}-{}", &ed[0..2], &ed[2..4], &ed[4..6])
-        } else {
-            String::new()
+    fn normalize_date_range(&mut self, end_date: &str) -> NaiveDate {
+        if end_date.is_empty() {
+            return self.pub_date;
         }
-    }
-
-    fn normalize_location(loc: &str) -> String {
-        match loc {
-            "MH" => "MtHermon".to_string(),
-            "Olive" => "MtOlive".to_string(),
-            "Carmel" => "MtCarmel".to_string(),
-            _ => loc.to_string(),
+        if let Ok(date) = NaiveDate::parse_from_str(end_date, "%y%m%d"){
+            self.event_date_stamp = format!("{} to {}", self.pub_date.format("%m/%d"), date.format("%m/%d").to_string());
+            self.pub_date = date;
+        }else {
+            let ymprefix = Utc::now().format("%y%m");
+            if let Ok(date) = NaiveDate::parse_from_str(format!("{}{}", ymprefix, end_date).as_str(), "%y%m%d"){
+                self.event_date_stamp = format!("{} to {}", self.pub_date.format("%m/%d"), date.format("%m/%d").to_string());
+                self.pub_date = date;
+            }else {
+                let yprefix = Utc::now().format("%y");
+                if let Ok(date) = NaiveDate::parse_from_str(format!("{}{}", yprefix, end_date).as_str(), "%y%m%d"){
+                    self.event_date_stamp = format!("{} to {}", self.pub_date.format("%m/%d"), date.format("%m/%d").to_string());
+                    self.pub_date = date;
+                }
+            }
         }
+        return self.pub_date;
     }
 
     fn construct_title(&self) -> String {
@@ -488,9 +538,9 @@ impl MediaEntry {
         let idx = if self.index.is_empty() { String::new() } else { format!("-{}", self.index) };
         let cd = contentDesc(&self.event_code, &self.event_desc);
         let cd = if cd.is_empty() { String::new() } else { format!(" {}", cd) };
-        let loc = Self::normalize_location(&self.location);
+        let loc = super::formatter::normalize_location(&self.location);
         let loc = if loc.is_empty() { String::new() } else { format!(" {}", loc) };
-        let ed = Self::format_event_date(&self.event_date_stamp);
+        let ed = super::formatter::format_event_date(&self.event_date_stamp);
         format!("{}{}{}{}{}", evt, idx, cd, loc, ed)
     }
 
@@ -501,15 +551,15 @@ impl MediaEntry {
         }
         let idx = if self.index.is_empty() { String::new() } else { format!("-{}", self.index) };
         let evn = if self.day_night == "e" { " Evening" } else { "" };
-        let loc = Self::normalize_location(&self.location);
+        let loc = super::formatter::normalize_location(&self.location);
         let loc = if loc.is_empty() { String::new() } else { format!(" {}", loc) };
         let sub = if self.event_desc.is_empty() { String::new() } else { format!(" {}", self.event_desc.replace("M.V.", "Music Video")) };
-        let ed = Self::format_event_date(&self.event_date_stamp);
+        let ed = super::formatter::format_event_date(&self.event_date_stamp);
         format!("{}{}{}{}{}{}", evt, idx, evn, loc, sub, ed)
     }
 
     fn format_released_date(&self) -> String {
-        Self::format_event_date(&self.file_date_stamp).trim_start().to_string()
+        super::formatter::format_event_date(&self.file_date_stamp).trim_start().to_string()
     }
 
     pub fn fill_rss_fields(&mut self, channel: &Channel) {
@@ -528,7 +578,7 @@ impl MediaEntry {
 
     pub fn write_rss_item<W: std::io::Write>(&self, writer: &mut Writer<W>, media_link: &str) -> Result<()> {
         let url = format!("{}/{}", media_link.trim_end_matches('/'), self.file_name);
-        let datetime = self.pub_date.and_hms_opt(0, 0, 0).unwrap();
+        let datetime = self.pub_date.and_hms_opt(0, 0, 0).expect("Invalid time 00:00:00");
         let pub_date: String = DateTime::<Utc>::from_naive_utc_and_offset(datetime, Utc).to_rfc3339();
 
         // Start item
@@ -542,7 +592,7 @@ impl MediaEntry {
 
         // Enclosure
         let ext = self.file_name.rsplit('.').next().unwrap_or("").to_lowercase();
-        let mime_type = MIME_TYPE_MAP.get(ext.as_str()).copied().unwrap_or("application/octet-stream");
+        let mime_type = super::formatter::MIME_TYPE_MAP.get(ext.as_str()).copied().unwrap_or("application/octet-stream");
         let mut enclosure = BytesStart::new("enclosure");
         enclosure.push_attribute(("url", url.as_str()));
         enclosure.push_attribute(("length", self.size.to_string().as_str()));
@@ -576,32 +626,40 @@ fn write_element<W: std::io::Write>(
     Ok(())
 }
 
-
-fn parseMediaType(filename: &str) -> String {
-    let path = std::path::Path::new(filename);
-    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-    if let Some(mime) = MIME_TYPE_MAP.get(ext.as_str()) {
-        if mime.starts_with("video/") {
-            "video".to_string()
-        } else if mime.starts_with("audio/") {
-            "audio".to_string()
-        } else if mime.starts_with("image/") {
-            "image".to_string()
-        } else {
-            "blob".to_string()
-        }
-    } else {
-        "unknown".to_string()
+fn parse_photo_archive_name(filename: &str) -> MediaEntry {
+    let base = std::path::Path::new(filename).file_name().unwrap_or_default().to_string_lossy().to_string();
+    let mut fi = MediaEntry {
+        media_type: super::formatter::parseMediaType(filename),
+        file_name: base.to_string(),
+        location: base.to_string(),
+        content_type: "photos".to_string(),
+        ..Default::default()
+    };
+    if let Some(caps) = RE_PHOTOS_ARCHIVE.captures(&base) {
+        fi.location = caps.get(1).map_or("", |m| m.as_str()).to_string();
+        fi.location = crate::models::formatter::normalize_location(&fi.location);
+        fi.file_date_stamp = caps.get(2).map_or("", |m| m.as_str()).to_string();
+        fi.event = caps.get(3).map_or("", |m| m.as_str()).to_string();
+        fi.event_code = caps.get(4).map_or("", |m| m.as_str()).to_string();
+        fi.event_desc = caps.get(5).map_or("", |m| m.as_str()).to_string();
+        fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
     }
+    fi
 }
 
-fn parseFileName(filename: &str) -> MediaEntry {
-    let base = std::path::Path::new(filename).file_name().unwrap_or_default().to_string_lossy();
+fn parse_file_name(filename: &str) -> MediaEntry {
+    let base = std::path::Path::new(filename).file_name().unwrap_or_default().to_string_lossy().to_string();
     let mut fi = MediaEntry {
-        media_type: parseMediaType(filename),
+        media_type: super::formatter::parseMediaType(filename),
         file_name: base.to_string(),
         ..Default::default()
     };
+    if (filename.contains("/Pictures/") || filename.contains("/Photos/")) && fi.file_name.ends_with(".zip") {
+        let me = parse_photo_archive_name(filename);
+        if !me.location.is_empty() {
+            return me;
+        }
+    }
     if let Some(caps) = RE_ZSV_PATTERN.captures(&base) {
         fi.content_type = "zsf".to_string();
         fi.file_date_stamp = caps.get(1).map_or("", |m| m.as_str()).to_string();
@@ -612,7 +670,7 @@ fn parseFileName(filename: &str) -> MediaEntry {
             fi.event = "".to_string();
         }
         if fi.event.len() > 1 {
-            fi.event_code = fi.event.chars().last().unwrap().to_string();
+            fi.event_code = fi.event.chars().last().expect("len > 1").to_string();
         }
         fi.index = caps.get(4).map_or("", |m| m.as_str()).to_string();
         fi.event_desc = caps.get(5).map_or("", |m| m.as_str()).trim_matches('-').to_string();
@@ -627,6 +685,7 @@ fn parseFileName(filename: &str) -> MediaEntry {
                 fi.event_date_stamp = caps_desc.get(2).map_or("", |m| m.as_str()).to_string();
                 fi.event_desc = caps_desc.get(3).map_or("", |m| m.as_str()).to_string();
             }
+            fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
         }
         return fi;
     }
@@ -641,7 +700,7 @@ fn parseFileName(filename: &str) -> MediaEntry {
             fi.event = "".to_string();
         }
         if fi.event.len() > 1 {
-            fi.event_code = fi.event.chars().last().unwrap().to_string();
+            fi.event_code = fi.event.chars().last().expect("len > 1").to_string();
         }
         fi.event_desc = caps.get(5).map_or("", |m| m.as_str()).trim_matches('-').to_string();
         if !fi.event_desc.is_empty() {
@@ -655,6 +714,7 @@ fn parseFileName(filename: &str) -> MediaEntry {
                 fi.event_date_stamp = caps_desc.get(2).map_or("", |m| m.as_str()).to_string();
                 fi.event_desc = caps_desc.get(3).map_or("", |m| m.as_str()).to_string();
             }
+            fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
         }
         return fi;
     }
@@ -669,7 +729,7 @@ fn parseFileName(filename: &str) -> MediaEntry {
             fi.event = fi.event[1..].to_string();
         }
         if fi.event.len() > 1 {
-            fi.event_code = fi.event.chars().last().unwrap().to_string();
+            fi.event_code = fi.event.chars().last().expect("len > 1").to_string();
         }
         fi.event_desc = caps.get(5).map_or("", |m| m.as_str()).trim_matches('-').to_string();
         if fi.event_desc.is_empty() {
@@ -679,6 +739,9 @@ fn parseFileName(filename: &str) -> MediaEntry {
             fi.event_date_stamp = caps_desc.get(2).map_or("", |m| m.as_str()).to_string();
             fi.event_desc = caps_desc.get(3).map_or("", |m| m.as_str()).to_string();
         }
+        if !fi.event_desc.is_empty() {
+            fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
+        }
         return fi;
     }
 
@@ -687,15 +750,16 @@ fn parseFileName(filename: &str) -> MediaEntry {
         fi.file_date_stamp = caps.get(1).map_or("", |m| m.as_str()).to_string();
         fi.event = caps.get(2).map_or("", |m| m.as_str()).to_string();
         if fi.event.len() > 1 {
-            fi.event_code = fi.event.chars().next().unwrap().to_string();
+            fi.event_code = fi.event.chars().next().expect("len > 1").to_string();
             fi.index = fi.event[1..].to_string();
         }
         fi.event_desc = caps.get(3).map_or("", |m| m.as_str()).trim_matches('-').to_string();
         if !fi.event_desc.is_empty() {
             fi.event_desc = format!("{}_{}", contentDesc(&fi.event_code, ""), fi.event_desc);
+            fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
         }
     }
-    fi.title = Path::new(&fi.file_name).file_stem().unwrap_or_default().to_string_lossy().to_string();
+    fi.title = Path::new(&fi.file_name).file_stem().unwrap_or_default().to_string_lossy().into_owned();
     fi
 }
 
@@ -751,12 +815,13 @@ fn default_base_output_path() -> String {
 const PARALLEL_THRESHOLD: usize = 35000;
 
 lazy_static! {
-    static ref RE_ZSV_PATTERN: Regex = Regex::new(r"^zsv(\d{6})(e?)-(\d{1,2}[a-z]|\w+)(?:-(\d{1,2}z?)(?:-([^(.]+))?)?").unwrap();
-    static ref RE_ANY_FULL_PATTERN: Regex = Regex::new(r"^([A-Za-z]+)(\d{8})(e?)-(\d{1,2}[a-z]|\w+)(?:-(.+))?.mp4").unwrap();
-    static ref RE_ZSV_DESC_PATTERN: Regex = Regex::new(r"^([\w][\w\d]+)(?:[-]?(\d{6}|\d{2}\.\d{2}\.\d{4}))?-([^(.]+)").unwrap();
-    static ref RE_ZSV_DESC_DATED: Regex = Regex::new(r"(.*?)(?:[-_])?(\d{6}|\d{2}\.\d{2}\.\d{4})(e)?(?:-([^(.]+))?").unwrap();
-    static ref RE_ZS_PATTERN: Regex = Regex::new(r"^zs(\d{6})(e?)(?:-?([a-z]{1,3}))?-(e?\d{1,2}[a-z]z?)(?:-?([^(.]+))?").unwrap();
-    static ref RE_HYMN_PATTERN: Regex = Regex::new(r"^zs(\d{6})-(s\d{1,2})-h(\d{4})(?:-?([^(.]+))?").unwrap();
+    static ref RE_ZSV_PATTERN: Regex = Regex::new(r"^zsv(\d{6})(e?)-(\d{1,2}[a-z]|\w+)(?:-(\d{1,2}z?)(?:-([^(.]+))?)?").expect("Invalid regex RE_ZSV_PATTERN");
+    static ref RE_ANY_FULL_PATTERN: Regex = Regex::new(r"^([A-Za-z]+)(\d{8})(e?)-(\d{1,2}[a-z]|\w+)(?:-(.+))?.mp4").expect("Invalid regex RE_ANY_FULL_PATTERN");
+    static ref RE_ZSV_DESC_PATTERN: Regex = Regex::new(r"^([\w][\w\d]+)(?:[-]?(\d{6}|\d{2}\.\d{2}\.\d{4}))?-([^(.]+)").expect("Invalid regex RE_ZSV_DESC_PATTERN");
+    static ref RE_ZSV_DESC_DATED: Regex = Regex::new(r"(.*?)(?:[-_])?(\d{6}|\d{2}\.\d{2}\.\d{4})(e)?(?:-([^(.]+))?").expect("Invalid regex RE_ZSV_DESC_DATED");
+    static ref RE_ZS_PATTERN: Regex = Regex::new(r"^zs(\d{6})(e?)(?:-?([a-z]{1,3}))?-(e?\d{1,2}[a-z]z?)(?:-?([^(.]+))?").expect("Invalid regex RE_ZS_PATTERN");
+    static ref RE_HYMN_PATTERN: Regex = Regex::new(r"^zs(\d{6})-(s\d{1,2})-h(\d{4})(?:-?([^(.]+))?").expect("Invalid regex RE_HYMN_PATTERN");
+    static ref RE_PHOTOS_ARCHIVE: Regex = Regex::new(r"^([\d]*[A-Za-z\'\-\_]+)(\d{6})(?:~(\d{1,4}))?([a-z])?\-([^(]+)").expect("Invalid regex RE_PHOTOS_ARCHIVE");
     static ref MIME_TYPE_MAP: HashMap<&'static str, &'static str> = {
         let mut map = HashMap::new();
         // Video formats

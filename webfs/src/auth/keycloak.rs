@@ -137,7 +137,10 @@ pub async fn verify_token(
     match decode::<Claims>(token, &decoding_key, &validation) {
         Ok(token_data) => {
             // Check expiration manually
-            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u64;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+                .as_secs() as u64;
             if token_data.claims.exp > now {
                 Ok(true)
             } else {

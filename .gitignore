@@ -28,6 +28,7 @@ no_llvm_build
 
 ## Build
 inst/
+logs/
 llvm/
 mingw-build/
 build/

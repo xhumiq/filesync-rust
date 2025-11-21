@@ -19,18 +19,17 @@ pub struct AppState {
     pub config: models::files::Config,
 }
 
-pub fn init_tracing(log_path: &str) {
+pub fn init_tracing(log_path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create the parent directory if it doesn't exist
     if let Some(parent) = Path::new(log_path).parent() {
-        std::fs::create_dir_all(parent).expect("Failed to create log directory");
+        std::fs::create_dir_all(parent)?;
     }
 
     let log_file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .append(true)
-        .open(log_path)
-        .expect("Failed to open log file");
+        .open(log_path)?;
 
     let buf_writer = BufWriter::new(log_file);
 
@@ -62,7 +61,7 @@ pub fn init_tracing(log_path: &str) {
     impl<'a> MakeWriter<'a> for SharedFlushingWriter {
         type Writer = MutexGuardWriter<'a>;
         fn make_writer(&'a self) -> Self::Writer {
-            MutexGuardWriter(self.0.lock().unwrap())
+            MutexGuardWriter(self.0.lock().expect("Mutex poisoned"))
         }
     }
 
@@ -72,8 +71,8 @@ pub fn init_tracing(log_path: &str) {
     // Set up subscriber: log to both file and stdout with compact format
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env()
-            .add_directive("rssfeed=debug".parse().unwrap())
-            .add_directive("webfs=debug".parse().unwrap())) // Respect RUST_LOG env var, default to info for webfs
+            .add_directive("rssfeed=debug".parse()?)
+            .add_directive("webfs=debug".parse()?)) // Respect RUST_LOG env var, default to info for webfs
         .with(
             fmt::layer()
                 .with_writer(shared_writer)
@@ -85,5 +84,7 @@ pub fn init_tracing(log_path: &str) {
                 .compact()
         )
         .init();
+
+    Ok(())
 }
 

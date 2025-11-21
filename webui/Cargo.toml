@@ -7,9 +7,9 @@ authors = ["Mike Chu <mike@dayspringsec.net>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-leptos = { version = "0.8", features = ["csr", "nightly"] }
-leptos_meta = { version = "0.8" }
-leptos_router = { version = "0.8", features = ["nightly"] }
+leptos = { version = "0.8", features = ["csr"] }
+leptos_meta = "0.8"
+leptos_router = { version = "0.8" }
 console_log = "1"
 log = "0.4"
 console_error_panic_hook = "0.1"
@@ -17,26 +17,42 @@ urlencoding = "2.1"
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3", features = ["Document", "Window", "HtmlDocument", "Storage", "console", "Location"] }
+web-sys = { version = "0.3.70", features = ["Document", "Window", "HtmlDocument", "Storage", "console", "Location", "ScrollIntoViewOptions", "ScrollLogicalPosition", "Element", "HtmlElement", "ScrollBehavior"] }
 gloo-net = "0.6"
+gloo = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 leptos-use = "0.16.3"
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+leptos_i18n = {version = "0.6.0-rc.2"}
+built = "0.8.0"
 
 # utils
 # strum = { version = "0.25", features = ["derive", "strum_macros"] }
 # strum_macros = "0.25"
 
+[build-dependencies]
+vergen-git2 = { version = "1.0.0", features = ["build", "cargo", "rustc", "si"] }
+
+[package.metadata.leptos-i18n]
+default = "en"
+locales = ["en", "zh"]
 
 [dev-dependencies]
 wasm-bindgen = "0.2"
 wasm-bindgen-test = "0.3"
-
 
 [profile.release]
 opt-level = 'z'
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[target.wasm32-unknown-unknown]
+rustflags = [
+  "-C", "link-arg=--initial-memory=1048576",  # 1MB initial (16 pages); increase to 2097152 for 2MB
+  "-C", "link-arg=--max-memory=4294967296",   # 4GB max (the browser limit)
+  "-C", "target-feature=+atomics,+bulk-memory",
+  "-C", "link-arg=-zstack-size=4194304",  # 4MB stack; adjust up to 64MB
+]

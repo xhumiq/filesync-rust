@@ -5,11 +5,11 @@ use gloo_net::http::Request;
 use serde::Deserialize;
 
 fn get_api_login_url() -> String {
-    std::env::var("API_LOGIN_URL").unwrap_or_else(|_| "http://localhost:3000/auth/login".to_string())
+    std::env::var("API_LOGIN_URL").unwrap_or_else(|_| "http://localhost:3000/auth/v1/login".to_string())
 }
 
 fn get_api_refresh_token_url() -> String {
-    std::env::var("API_REFRESH_TOKEN_URL").unwrap_or_else(|_| "http://localhost:3000/auth/refresh".to_string())
+    std::env::var("API_REFRESH_TOKEN_URL").unwrap_or_else(|_| "http://localhost:3000/auth/v1/refresh".to_string())
 }
 
 #[derive(Deserialize)]
@@ -111,7 +111,7 @@ pub fn Login() -> impl IntoView {
     // Load username from cookie on mount
     Effect::new(move |_| {
         if let Some(window) = web_sys::window() {
-            if let Ok(html_doc) = window.document().unwrap().dyn_into::<web_sys::HtmlDocument>() {
+            if let Ok(html_doc) = window.document().expect("No document").dyn_into::<web_sys::HtmlDocument>() {
                 let cookies: String = html_doc.cookie().unwrap_or_default();
                 for cookie in cookies.split(';') {
                     let cookie: &str = cookie.trim();
@@ -147,7 +147,7 @@ pub fn Login() -> impl IntoView {
         // Set cookie if remember me is checked
         if remember {
             if let Some(window) = web_sys::window() {
-                if let Ok(html_doc) = window.document().unwrap().dyn_into::<web_sys::HtmlDocument>() {
+                if let Ok(html_doc) = window.document().expect("No document").dyn_into::<web_sys::HtmlDocument>() {
                     let expires = js_sys::Date::now() + (30.0 * 24.0 * 60.0 * 60.0 * 1000.0); // 30 days
                     let date = js_sys::Date::new_0();
                     date.set_time(expires);
@@ -189,7 +189,7 @@ pub fn Login() -> impl IntoView {
 
                                         // Redirect to home page
                                         if let Some(window) = web_sys::window() {
-                                            let _ = window.location().set_href("/ui/Videos");
+                                            let _ = window.location().set_href("/ui/videos/today");
                                         }
                                     }
                                     Err(e) => {

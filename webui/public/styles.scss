@@ -52,6 +52,13 @@ body {
   font-style: bold;
 }
 
+@font-face {
+  font-family: 'Allura'; /* You can name this whatever you like */
+  src: url('/fonts/Allura-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+}
+
 .container {
   display: flex;
   flex-direction: column;
@@ -72,7 +79,7 @@ h5,
 h6 {
   text-align: center;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1rem;
 }
 
 p,
@@ -93,8 +100,8 @@ button {
   padding-right:1rem;
 }
 
-.top-bar > h1 {
-  padding: 0;
+.top-bar > div > h1 {
+  padding: 0.65rem;
 }
 
 .top-bar > div > button{

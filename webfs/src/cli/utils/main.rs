@@ -29,20 +29,20 @@ fn list_weeks_in_range(start_date: NaiveDate, end_date: NaiveDate) -> Vec<(Naive
     weeks
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Hard-coded date ranges for testing
     let test_ranges = vec![
         (
-            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),  // Monday, Jan 1, 2024
-            NaiveDate::from_ymd_opt(2024, 1, 15).unwrap(), // Monday, Jan 15, 2024
+            NaiveDate::from_ymd_opt(2024, 1, 1).ok_or("Invalid date 2024-01-01")?,  // Monday, Jan 1, 2024
+            NaiveDate::from_ymd_opt(2024, 1, 15).ok_or("Invalid date 2024-01-15")?, // Monday, Jan 15, 2024
         ),
         (
-            NaiveDate::from_ymd_opt(2024, 1, 3).unwrap(),  // Wednesday, Jan 3, 2024
-            NaiveDate::from_ymd_opt(2024, 1, 20).unwrap(), // Saturday, Jan 20, 2024
+            NaiveDate::from_ymd_opt(2024, 1, 3).ok_or("Invalid date 2024-01-03")?,  // Wednesday, Jan 3, 2024
+            NaiveDate::from_ymd_opt(2024, 1, 20).ok_or("Invalid date 2024-01-20")?, // Saturday, Jan 20, 2024
         ),
         (
-            NaiveDate::from_ymd_opt(2024, 1, 7).unwrap(),  // Sunday, Jan 7, 2024
-            NaiveDate::from_ymd_opt(2024, 1, 21).unwrap(), // Sunday, Jan 21, 2024
+            NaiveDate::from_ymd_opt(2024, 1, 7).ok_or("Invalid date 2024-01-07")?,  // Sunday, Jan 7, 2024
+            NaiveDate::from_ymd_opt(2024, 1, 21).ok_or("Invalid date 2024-01-21")?, // Sunday, Jan 21, 2024
         ),
     ];
 
@@ -66,4 +66,6 @@ fn main() {
         println!("---");
         println!();
     }
+
+    Ok(())
 }

@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Utc};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Channel {
@@ -72,6 +72,28 @@ impl Channel {
 
         Some((first_date, last_date))
     }
+
+    pub fn date_range(&self, start: NaiveDate, end: NaiveDate) -> Vec<MediaEntry> {
+        self.entries.iter().filter(|entry| {
+            entry.pub_date >= start && entry.pub_date <= end
+        }).cloned().collect()
+    }
+
+    pub fn entries_for_date(&self, date: NaiveDate) -> Vec<MediaEntry> {
+        self.entries.iter().filter(|e| e.pub_date == date).cloned().collect()
+    }
+
+    pub fn past_3_days(&self) -> Vec<MediaEntry> {
+        let today = Utc::now().date_naive();
+        let start = today - chrono::Duration::days(2);
+        let end = today + chrono::Duration::days(1);
+        self.date_range(start, end)
+    }
+
+    pub fn entries_for_today(&self) -> Vec<MediaEntry> {
+        let today = Utc::now().date_naive();
+        self.entries_for_date(today)
+    }
 }
 
 #[cfg(test)]
@@ -111,7 +133,7 @@ mod tests {
     #[test]
     fn test_first_and_last_dates_single_entry() {
         let mut channel = Channel::default();
-        let test_date = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let test_date = NaiveDate::from_ymd_opt(2024, 1, 1).expect("Invalid test date");
         channel.entries.push(create_test_entry(test_date));
 
         let result = channel.first_and_last_dates();
@@ -123,9 +145,9 @@ mod tests {
         let mut channel = Channel::default();
 
         // Create entries with different dates (out of order)
-        let date1 = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(); // middle
-        let date2 = NaiveDate::from_ymd_opt(2024, 1, 4).unwrap(); // latest
-        let date3 = NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(); // earliest
+        let date1 = NaiveDate::from_ymd_opt(2024, 1, 2).expect("Invalid test date"); // middle
+        let date2 = NaiveDate::from_ymd_opt(2024, 1, 4).expect("Invalid test date"); // latest
+        let date3 = NaiveDate::from_ymd_opt(2024, 1, 1).expect("Invalid test date"); // earliest
 
         channel.entries.push(create_test_entry(date2)); // latest
         channel.entries.push(create_test_entry(date1)); // middle
@@ -181,7 +203,7 @@ impl Default for MediaEntry {
             event_date_stamp: String::new(),
             media_type: String::new(),
             size: 0,
-            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).unwrap(),
+            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Invalid default date"),
             modified: std::time::UNIX_EPOCH,
         }
     }
