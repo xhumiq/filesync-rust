@@ -5,11 +5,11 @@ use gloo_net::http::Request;
 use serde::Deserialize;
 
 fn get_api_login_url() -> String {
-    std::env::var("API_LOGIN_URL").unwrap_or_else(|_| "http://localhost:3000/auth/v1/login".to_string())
+    std::env::var("API_LOGIN_URL").unwrap_or_else(|_| "/auth/v1/login".to_string())
 }
 
 fn get_api_refresh_token_url() -> String {
-    std::env::var("API_REFRESH_TOKEN_URL").unwrap_or_else(|_| "http://localhost:3000/auth/v1/refresh".to_string())
+    std::env::var("API_REFRESH_TOKEN_URL").unwrap_or_else(|_| "/auth/v1/refresh".to_string())
 }
 
 #[derive(Deserialize)]

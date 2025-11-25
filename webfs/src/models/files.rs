@@ -111,6 +111,7 @@ pub struct Channel {
     pub title: String,
     #[serde(default)]
     pub link: String,
+    #[serde(default)]
     pub media_link: String,
     #[serde(default)]
     pub description: String,
@@ -261,7 +262,6 @@ impl Channel {
         };
         if files.len() > 0 {
             if files[0].link.contains("Pictures") || files[0].link.contains("Path"){
-                println!("First media type: {} {}", files[0].location, files[0].event);
                 files = Self::sort_photo_entries(files);
             }else{
                 files = super::formatter::clean_pub_date(files);
@@ -382,6 +382,7 @@ impl Channel {
 
         // Add items for each entry
         for entry in &files {
+            println!("First media type: {} {}", entry.file_name, entry.event_id("zsv"));
             entry.write_rss_item(writer, &self.media_link)?;
         }
 
@@ -452,6 +453,9 @@ impl MediaEntry {
             modified,
             ..Default::default()
         }
+    }
+    pub fn event_id(&self, prefix : &str) -> String {
+        format!("{}{}-{}", prefix, self.file_date_stamp, self.event)
     }
     pub fn from_entry(entry: std::fs::DirEntry, channel: &Channel) -> std::io::Result<Self> {
         let metadata = entry.metadata()?;

@@ -124,7 +124,7 @@ pub fn VideoView() -> impl IntoView {
         set_error.set(String::new());
 
         spawn_local(async move {
-            match fetch_files("Videos/ZSF".to_string()).await {
+            match fetch_files("zh/videos-all".to_string()).await {
                 Ok(ch) => {
                     let mut map = HashMap::new();
                     for entry in &ch.entries {

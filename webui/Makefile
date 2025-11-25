@@ -1,15 +1,15 @@
-API_LOGIN_URL:=http://localhost:3000/auth/login
+ENV_FILE:=.env.local
 
 build:
 	npm run build-css
-	~/.cargo/bin/trunk build
+	ENV_PROFILE=$(ENV_FILE) ~/.cargo/bin/trunk build
 
 release:
 	npm run build-css
-	~/.cargo/bin/trunk build --release
+	~/.cargo/bin/trunk build --release -vv
 
 css:
 	npm run dev
 
 serve:
-	API_LOGIN_URL=$(API_LOGIN_URL) ~/.cargo/bin/trunk serve --port 3030
+	ENV_PROFILE=$(ENV_FILE) ~/.cargo/bin/trunk serve --port 3030

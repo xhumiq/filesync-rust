@@ -4,7 +4,7 @@ use crate::models::channel::Channel;
 
 pub fn get_api_file_listing_url() -> String {
     std::env::var("API_FILE_LISTING_URL")
-        .unwrap_or_else(|_| "http://localhost:3000/fs/v1".to_string())
+        .unwrap_or_else(|_| "/fs/v1".to_string())
 }
 
 pub fn get_jwt_token() -> Option<String> {

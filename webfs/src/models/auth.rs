@@ -40,6 +40,12 @@ pub struct IntrospectResponse {
     // other fields...
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct KeycloakError {
+    pub error: String,
+    pub error_description: Option<String>,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct JWKS {
     pub keys: Vec<JWK>,

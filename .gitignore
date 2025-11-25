@@ -57,6 +57,11 @@ node_modules/
 package-lock.json
 ## direnv
 .envrc/
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
 .direnv/
 
 ## nix

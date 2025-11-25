@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use chrono::{NaiveDate, Utc};
-use redb::{Database, TableDefinition};
 use regex::Regex;
 use std::collections::HashSet;
 use std::fs;
@@ -15,10 +14,10 @@ use quick_xml::Writer;
 
 use docx_rs::{DocumentChild, TableCell};
 use crate::models::{file_desc::FileDesc, files::{Config, Channel}};
-use bincode::serialize;
-
-const FILENAMES_TABLE: TableDefinition<&str, ()> = TableDefinition::new("filenames");
-const FILEDESC_TABLE: TableDefinition<&str, Vec<u8>> = TableDefinition::new("filedesc");
+use crate::storage::Storage;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::collections::HashMap;
 
 pub struct MonitorConfig{
     pub config: Config,
@@ -29,18 +28,8 @@ pub struct MonitorConfig{
     pub video_list_path: String,    
 }
 
-pub async fn start_file_monitor(config: &MonitorConfig, cache: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (crate::models::files::Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_file_monitor(config: &MonitorConfig, storage: Arc<Mutex<Storage>>, cache: Arc<Mutex<HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<(), Box<dyn std::error::Error>> {
     let pattern = config.video_descr_file_pattern.as_str();
-    let db = Database::create(&config.db_path)?;
-
-    // Ensure the table exists
-    {
-        let txn = db.begin_write()?;
-        txn.open_table(FILENAMES_TABLE)?;
-        txn.open_table(FILEDESC_TABLE)?;
-        txn.commit()?;
-    }
-
     let regex = Regex::new(pattern)?;
 
     let scan_path = config.video_list_path.clone();
@@ -49,13 +38,17 @@ pub async fn start_file_monitor(config: &MonitorConfig, cache: std::sync::Arc<st
         loop {
             interval.tick().await;
             tracing::info!("Scanning files... {}", scan_path);
-            if let Err(e) = scan_and_store(&db, scan_path.as_str(), &regex).await {
+            if let Err(e) = scan_and_store(&storage, scan_path.as_str(), &regex).await {
                 tracing::error!("Error scanning files: {}", e);
             }
         }
     });
-    if config.rss_days < 0{
-        let start_date = Utc::now().date_naive() - chrono::Duration::days(config.rss_days.abs() as i64);
+    let mut rss_days = config.rss_days;
+    if rss_days >= 0{
+        if rss_days == 0{
+            rss_days = 7;
+        }
+        let start_date = Utc::now().date_naive() - chrono::Duration::days(rss_days as i64);
         let rss_channels: Vec<(String, Channel)> = config.config.channels.values().flat_map(|m| m.iter().map(|(k,v)| (k.clone(), v.clone()))).collect();
         tokio::spawn(async move {
             let mut interval = time::interval(Duration::from_secs(5)); // Poll every 5 seconds
@@ -67,7 +60,7 @@ pub async fn start_file_monitor(config: &MonitorConfig, cache: std::sync::Arc<st
             }
         });
     }else{
-        tracing::warn!("RSS Refresh Skipped");
+        tracing::warn!("RSS Refresh Skipped - RSS_DAYS not set");
     }
     Ok(())
 }
@@ -111,7 +104,7 @@ fn write_rss(channels_to_process: &[(String, Channel)], start_date: NaiveDate, c
     Ok(())
 }
 
-async fn scan_and_store(db: &Database, scan_path: &str, regex: &Regex) -> Result<()> {
+async fn scan_and_store(storage: &Arc<Mutex<Storage>>, scan_path: &str, regex: &Regex) -> Result<()> {
     let path = Path::new(scan_path);
     let mut current_files = HashSet::new();
 
@@ -125,46 +118,28 @@ async fn scan_and_store(db: &Database, scan_path: &str, regex: &Regex) -> Result
         }
     }
 
-    // Check against database
-    let txn = db.begin_read()?;
-    let table = txn.open_table(FILENAMES_TABLE)?;
-
     let mut new_files = Vec::new();
-
+    let storage = storage.lock().unwrap();
     for file in &current_files {
-        if table.get(file.as_str())?.is_none() {
+        if !storage.filename_exists(file)? {
             new_files.push(file.clone());
         }
     }
+
+    new_files.sort();
 
     for file in &new_files {
         let fullpath = path.join(file.clone());
         match read_file_descriptor(fullpath.to_str().unwrap_or("invalid_path")) {
             Ok(records) => {
-                let txn = db.begin_write()?;
-                {
-                    let mut table: redb::Table<'_, &str, Vec<u8>> = txn.open_table(FILEDESC_TABLE)?;
-                    for file_desc in &records {
-                        let serialized = serialize(&file_desc)?;
-                        table.insert(file_desc.id.as_str(), serialized)?;
-                    }
-                }
-                txn.commit()?;
+                storage.insert_file_descs(&records)?;
                 tracing::info!("Read {} descriptors from {}", records.len(), fullpath.to_str().unwrap_or("invalid_path"));
-
             },
             Err(e) => tracing::error!("Error reading file descriptor for {}: {}", fullpath.to_str().unwrap_or("invalid_path"), e),
         }
     }
 
-    let txn = db.begin_write()?;
-    {
-        let mut table = txn.open_table(FILENAMES_TABLE)?;
-        for file in &current_files {
-            table.insert(file.as_str(), ())?;
-        }
-    }
-    txn.commit()?;
+    storage.insert_filenames(&current_files.into_iter().collect::<Vec<_>>())?;
 
     Ok(())
 }

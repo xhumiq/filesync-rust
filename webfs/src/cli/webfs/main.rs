@@ -9,6 +9,7 @@ use webfs::AppState;
 use reqwest::Client;
 use tower_http::cors::CorsLayer;
 use webfs::models::files::Channel;
+use webfs::storage::Storage;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -20,27 +21,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if let Some(describe) = option_env!("VERGEN_GIT_DESCRIBE") {
         println!("git describe: {describe}");
     }
+    let log_path = match std::env::var("LOG_FILE") {
+        Ok(path) => path,
+        Err(e) => {
+            tracing::error!("LOG_FILE not set: {}, using default", e);
+            "../logs/webfs.log".to_string()
+        }
+    };
 
-    webfs::init_tracing("../logs/webfs.log")?;
+    webfs::init_tracing(log_path.as_str())?;
 
     let config_path = std::env::var("CONFIG_PATH").unwrap_or("config-test.yaml".to_string());
     tracing::info!("Application started Config: {}", config_path);
 
-    let config = Channel::read_config(&config_path)?;
+    let config = match Channel::read_config(&config_path) {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::error!("Failed to read config from {}: {}", config_path, e);
+            return Err(e.into());
+        }
+    };
+
+    let keycloak_url = {
+        let mut url = std::env::var("KEYCLOAK_URL").map_err(|e| {
+            tracing::error!("KEYCLOAK_URL not set: {}", e);
+            e
+        })?;
+        if !url.starts_with("http") {
+            url = format!("https://{}", url);
+        }
+        url
+    };
+
+    let db_path = std::env::var("DB_PATH").unwrap_or("/opt/webdav/data/webfs/webfs.db".to_string());
+
+    tracing::info!("Creating Database path: {}", db_path);
+
+    let storage = match Storage::new(&db_path) {
+        Ok(storage) => storage,
+        Err(e) => {
+            tracing::error!("Failed to create storage at {}: {}", db_path, e);
+            return Err(e.into());
+        }
+    };
 
     let state = AppState {
-        keycloak_url: std::env::var("KEYCLOAK_URL")?,
-        realm: std::env::var("REALM")?,
-        client_id: std::env::var("CLIENT_ID")?,
-        client_secret: std::env::var("CLIENT_SECRET")?,
+        keycloak_url,
+        realm: std::env::var("REALM").map_err(|e| {
+            tracing::error!("REALM not set: {}", e);
+            e
+        })?,
+        client_id: std::env::var("CLIENT_ID").map_err(|e| {
+            tracing::error!("CLIENT_ID not set: {}", e);
+            e
+        })?,
+        client_secret: std::env::var("CLIENT_SECRET").map_err(|e| {
+            tracing::error!("CLIENT_SECRET not set: {}", e);
+            e
+        })?,
         base_path: std::env::var("BASE_PATH").unwrap_or("/srv/media".to_string()),
         http_client: Client::new(),
         config: config.clone(),
         channel_cache: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        storage: std::sync::Arc::new(std::sync::Mutex::new(storage)),
     };
 
     // Start file monitoring in background
-    let db_path = std::env::var("DB_PATH").unwrap_or("/opt/webdav/data/webfs".to_string());
     let watch_path = std::env::var("WATCH_PATH").unwrap_or("/srv/media/Video".to_string());
     let rss_outpath = std::env::var("RSS_OUT_PATH").unwrap_or("/srv/rss".to_string());
     let file_pattern = std::env::var("FILE_PATTERN").unwrap_or(r"zsv[\d]{6}.*\.docx".to_string());
@@ -58,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing::info!("Starting file monitor for path: {} and file pattern: {}", watch_path, file_pattern);
     let state_clone = state.clone();
     tokio::spawn(async move {
-        if let Err(e) = webfs::webfs::file_monitor::start_file_monitor(&monitor_config, state_clone.channel_cache).await {
+        if let Err(e) = webfs::webfs::file_monitor::start_file_monitor(&monitor_config, state_clone.storage, state_clone.channel_cache).await {
             tracing::error!("File monitor error: {}", e);
         }
     });
@@ -91,15 +137,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 async fn serve_tcp(app: Router, port: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
     tracing::info!("Server running on http://0.0.0.0:{}", port);
-    axum::serve(listener, app).await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await.map_err(|e| {
+        tracing::error!("Failed to bind TcpListener on port {}: {}", port, e);
+        e
+    })?;
+    axum::serve(listener, app).await.map_err(|e| {
+        tracing::error!("Failed to serve TCP: {}", e);
+        e
+    })?;
     Ok(())
 }
 
 async fn serve_unix(app: Router, socket_path: String) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let listener = UnixListener::bind(&socket_path)?;
     tracing::info!("Server running on socket: {}", socket_path);
-    axum::serve(listener, app).await?;
+    // Remove existing socket file if it exists to avoid bind failure
+    std::fs::remove_file(&socket_path).ok();
+    let listener = UnixListener::bind(&socket_path).map_err(|e| {
+        tracing::error!("Failed to bind UnixListener on {}: {}", socket_path, e);
+        e
+    })?;
+    axum::serve(listener, app).await.map_err(|e| {
+        tracing::error!("Failed to serve Unix: {}", e);
+        e
+    })?;
     Ok(())
 }

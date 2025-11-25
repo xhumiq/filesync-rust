@@ -157,7 +157,7 @@ pub fn PhotosView() -> impl IntoView {
         set_error.set(String::new());
 
         spawn_local(async move {
-            match fetch_files("Pictures/Chinese".to_string()).await {
+            match fetch_files("Photos/Chinese".to_string()).await {
                 Ok(ch) => {
                     let mut map = HashMap::new();
                     for entry in &ch.entries {

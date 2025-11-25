@@ -9,7 +9,7 @@ use crate::auth::keycloak;
 pub async fn authenticate_handler(
     State(state): State<crate::AppState>,
     Json(auth_req): Json<AuthRequest>,
-) -> Result<Json<AuthResponse>, StatusCode> {
+) -> Result<Json<AuthResponse>, (StatusCode, Json<serde_json::Value>)> {
     let response = keycloak::authenticate(
         &state.keycloak_url,
         &state.realm,
@@ -18,7 +18,8 @@ pub async fn authenticate_handler(
         auth_req,
         &state.http_client,
     )
-    .await?;
+    .await
+    .map_err(|(status, msg)| (status, Json(serde_json::json!({"error": msg}))))?;
     Ok(Json(response))
 }
 

@@ -5,11 +5,12 @@ use chrono::Utc;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use lazy_static::lazy_static;
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{to_string_pretty, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::time::{Duration, Instant};
+use tracing;
 
 struct CachedJWKS {
     jwks: JWKS,
@@ -61,7 +62,7 @@ pub async fn authenticate(
     client_secret: &str,
     auth_req: AuthRequest,
     http_client: &Client,
-) -> Result<AuthResponse, StatusCode> {
+) -> Result<AuthResponse, (StatusCode, String)> {
     let token_url = format!(
         "{}/realms/{}/protocol/openid-connect/token",
         keycloak_url, realm
@@ -75,23 +76,34 @@ pub async fn authenticate(
     params.insert("password", auth_req.password);
     params.insert("scope", "openid".to_string());
 
+    let auth_req_json = serde_json::to_string_pretty(&params).unwrap_or_else(|_| "Failed to serialize".to_string());
+    tracing::debug!("Auth request: {}", auth_req_json);
+
+    tracing::debug!("Login attempt {} for user: {}", &token_url, auth_req.username);
+
     let response = http_client
         .post(&token_url)
         .form(&params)
         .send()
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|e| {
+            tracing::debug!("Error sending auth request: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to send authentication request: {}", e))
+        })?;
 
     if response.status().is_success() {
         let token: TokenResponse = response
             .json()
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|e| {
+                tracing::debug!("Error parsing token response: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to parse token response: {}", e))
+            })?;
 
         // Decode claims
         let claims = decode_jwt_payload_struct(&token.access_token)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        println!("TRACE: Login successful for user: {}", auth_req.username);
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to decode JWT claims: {}", e)))?;
+        tracing::debug!("Login successful for user: {}", auth_req.username);
 
         // Calculate expiration dates
         let now = Utc::now();
@@ -106,7 +118,14 @@ pub async fn authenticate(
             claims,
         })
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        let body = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
+        let error_msg = if let Ok(keycloak_err) = serde_json::from_str::<KeycloakError>(&body) {
+            keycloak_err.error_description.unwrap_or_else(|| body.clone())
+        } else {
+            body.clone()
+        };
+        tracing::debug!("Login invalid for user: {}, response body: {}", auth_req.username, body);
+        Err((StatusCode::UNAUTHORIZED, error_msg))
     }
 }
 

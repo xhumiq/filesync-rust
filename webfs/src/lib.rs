@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod models;
+pub mod storage;
 pub mod webfs;
 
 use reqwest::Client;
@@ -20,10 +21,12 @@ pub struct AppState {
     pub http_client: Client,
     pub config: models::files::Config,
     pub channel_cache: Arc<Mutex<HashMap<String, (models::files::Channel, DateTime<Utc>)>>>,
+    pub storage: Arc<Mutex<storage::Storage>>,
 }
 
 pub fn init_tracing(log_path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create the parent directory if it doesn't exist
+    println!("Log path: {}", log_path);
     if let Some(parent) = Path::new(log_path).parent() {
         std::fs::create_dir_all(parent)?;
     }

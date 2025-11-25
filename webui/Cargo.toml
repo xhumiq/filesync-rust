@@ -27,6 +27,7 @@ anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 leptos_i18n = {version = "0.6.0-rc.2"}
 built = "0.8.0"
+leptos_config = "0.8.8"
 
 # utils
 # strum = { version = "0.25", features = ["derive", "strum_macros"] }
@@ -34,6 +35,7 @@ built = "0.8.0"
 
 [build-dependencies]
 vergen-git2 = { version = "1.0.0", features = ["build", "cargo", "rustc", "si"] }
+dotenvy = "0.15.7"
 
 [package.metadata.leptos-i18n]
 default = "en"
