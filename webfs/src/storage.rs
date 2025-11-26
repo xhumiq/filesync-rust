@@ -1,11 +1,14 @@
 use anyhow::Result;
 use redb::{Database, TableDefinition};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use bincode;
+use chrono::{Utc, DateTime};
 use crate::models::file_desc::FileDesc;
-use crate::models::files::MediaEntry;
+use crate::models::files::{Channel, MediaEntry};
 
+const CHANNEL_TABLE: TableDefinition<&str, Vec<u8>> = TableDefinition::new("channel");
 const FILENAMES_TABLE: TableDefinition<&str, ()> = TableDefinition::new("filenames");
 const FILEDESC_TABLE: TableDefinition<&str, Vec<u8>> = TableDefinition::new("filedesc");
 
@@ -39,6 +42,10 @@ impl Storage {
                 e
             })?;
             txn.open_table(FILEDESC_TABLE).map_err(|e| {
+                tracing::error!("Failed to open filedesc table: {}", e);
+                e
+            })?;
+            txn.open_table(CHANNEL_TABLE).map_err(|e| {
                 tracing::error!("Failed to open filedesc table: {}", e);
                 e
             })?;
@@ -103,6 +110,18 @@ impl Storage {
         Ok(())
     }
 
+    pub fn insert_channel(&self, channel: &Channel) -> Result<()> {
+        let txn = self.db.begin_write()?;
+        {
+            let mut table = txn.open_table(CHANNEL_TABLE)?;
+            let serialized = bincode::serialize(channel)?;
+            let id = format!("{}/{}", channel.language, channel.name);
+            table.insert(id.as_str(), serialized)?;
+        }
+        txn.commit()?;
+        Ok(())
+    }
+
     pub fn get_file_desc(&self, id: &str) -> Result<Option<FileDesc>> {
         let txn = self.db.begin_read()?;
         let table = txn.open_table(FILEDESC_TABLE)?;
@@ -122,4 +141,44 @@ impl Storage {
         }
         Ok(entities)
     }
+
+    pub fn fill_descriptions(&self, channel: &Channel, cached_ch: &Option<(Channel, DateTime<Utc>)>) -> Result<Channel> {
+        let txn = self.db.begin_read()?;
+        let table = txn.open_table(FILEDESC_TABLE)?;
+        let mut entries = Vec::new();
+        let mut entryMap: HashMap<String, MediaEntry> = HashMap::new();
+        if let Some((ref cached_ch, _)) = cached_ch {
+            for entry in &cached_ch.entries {
+                entryMap.insert(entry.normalized_event_id("zsv"), entry.clone());
+            }
+        }
+        for entry in &channel.entries {
+            let mut entry = entry.clone();
+            let key = entry.normalized_event_id("zsv");
+            if let Some(desc) = table.get(key.as_str())?.map(|v| bincode::deserialize::<FileDesc>(v.value().as_slice()).unwrap()) {
+                entry.description = if channel.language == "en" {
+                    if !entry.index.is_empty() {
+                        format!("{} ({})", desc.eng_descr, entry.index)
+                    }else{
+                        desc.eng_descr.clone()
+                    }
+                }else{
+                    if !entry.index.is_empty() {
+                        format!("{} ({})", desc.chi_descr, entry.index)
+                    }else{
+                        desc.chi_descr.clone()
+                    }
+                };
+            }else if channel.language == "zh" {
+                if let Some(cached_entry) = entryMap.get(&key) {
+                    entry.description = cached_entry.description.clone();
+                }
+            }
+            entries.push(entry);
+        }
+        let mut channel = channel.clone();
+        channel.set_entries(entries);
+        Ok(channel)
+    }
+
 }

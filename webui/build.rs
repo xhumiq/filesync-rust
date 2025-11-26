@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //dotenvy::dotenv().ok();
     println!("Regular debug message - visible with cargo build -v");
     if let Ok(profile_file) = env::var("ENV_PROFILE") {
         println!("cargo:rerun-if-changed={}", profile_file);

@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use chrono::{DateTime, Utc, Local, NaiveDate, Duration};
+use chrono::{DateTime, Utc, Local, NaiveDate, NaiveDateTime, Duration};
 use std::collections::HashMap;
 use regex::Regex;
 use lazy_static::lazy_static;
@@ -13,12 +13,12 @@ lazy_static! {
 }
 
 pub fn clean_pub_date(entries: Vec<MediaEntry>) -> Vec<MediaEntry> {
-    let mut groups: HashMap<NaiveDate, Vec<MediaEntry>> = HashMap::new();
+    let mut groups: HashMap<NaiveDateTime, Vec<MediaEntry>> = HashMap::new();
     for entry in entries {
         groups.entry(entry.pub_date).or_insert(Vec::new()).push(entry);
     }
     let mut result = Vec::new();
-    for (pub_date_date, mut group) in groups {
+    for (pub_date_datetime, mut group) in groups {
         group.sort_by_key(|e| e.modified);
         if let Some(first) = group.first() {
             let first_modified = first.modified;
@@ -26,9 +26,9 @@ pub fn clean_pub_date(entries: Vec<MediaEntry>) -> Vec<MediaEntry> {
             let base_entry = group.iter().rev().find(|e| e.modified <= cutoff).unwrap_or(first);
             let mut base_time = base_entry.modified;
             let base_date = DateTime::<Utc>::from(base_time).date_naive();
-            if base_date.day() != pub_date_date.day() {
-                let adjusted_date = pub_date_date + Duration::days(1);
-                let adjusted_datetime = adjusted_date.and_hms_opt(23, 59, 59).expect("Invalid time 23:59:59");
+            if base_date.day() != pub_date_datetime.day() {
+                let adjusted_date = pub_date_datetime;
+                let adjusted_datetime = adjusted_date.with_hour(23).unwrap().with_minute(55).unwrap();
                 base_time = DateTime::<Utc>::from_naive_utc_and_offset(adjusted_datetime, Utc).into();
             }
             base_time = base_time - std::time::Duration::from_secs((group.len() + 1) as u64);
@@ -38,7 +38,8 @@ pub fn clean_pub_date(entries: Vec<MediaEntry>) -> Vec<MediaEntry> {
                 base_time = (dt + chrono::Duration::minutes(5)).into();
             }
             for mut entry in group {
-                entry.pub_date = DateTime::<Utc>::from(base_time).date_naive();
+                //println!("{} {} {}", entry.file_name, DateTime::<Utc>::from(entry.modified).format("%m/%d %H:%M:%S"), DateTime::<Utc>::from(base_time).format("%m/%d %H:%M:%S"));
+                entry.pub_date = DateTime::<Utc>::from(base_time).naive_utc();
                 result.push(entry);
             }
         }

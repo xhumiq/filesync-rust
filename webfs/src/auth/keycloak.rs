@@ -5,7 +5,7 @@ use chrono::Utc;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use lazy_static::lazy_static;
 use reqwest::Client;
-use serde_json::{to_string_pretty, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

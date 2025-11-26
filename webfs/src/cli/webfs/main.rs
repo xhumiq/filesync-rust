@@ -10,10 +10,14 @@ use reqwest::Client;
 use tower_http::cors::CorsLayer;
 use webfs::models::files::Channel;
 use webfs::storage::Storage;
+use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    dotenv::dotenv().ok();
+    if let Ok(profile_file) = env::var("ENV_PROFILE") {
+        println!("cargo:rerun-if-changed={}", profile_file);
+        dotenvy::from_path(profile_file).ok();
+    }
 
     if let Some(timestamp) = option_env!("VERGEN_BUILD_TIMESTAMP") {
         println!("Build Timestamp: {timestamp}");
@@ -91,6 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let rss_outpath = std::env::var("RSS_OUT_PATH").unwrap_or("/srv/rss".to_string());
     let file_pattern = std::env::var("FILE_PATTERN").unwrap_or(r"zsv[\d]{6}.*\.docx".to_string());
     let rss_days = std::env::var("RSS_DAYS").unwrap_or("-1".to_string()).parse::<i32>().ok();
+    println!("RSS_DAYS: {}", rss_days.unwrap_or(-1));
 
     let monitor_config = webfs::webfs::file_monitor::MonitorConfig {
         config: config.clone(),
@@ -100,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         rss_output_path: rss_outpath.clone(),
         video_list_path: watch_path.clone(),
     };
-
+    tracing::info!("Starting rss outpath for path: {}", rss_outpath);
     tracing::info!("Starting file monitor for path: {} and file pattern: {}", watch_path, file_pattern);
     let state_clone = state.clone();
     tokio::spawn(async move {

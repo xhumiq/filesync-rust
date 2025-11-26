@@ -5,7 +5,7 @@ use regex::Regex;
 use lazy_static::lazy_static;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
-use chrono::{DateTime, Utc, Local, NaiveDate};
+use chrono::{DateTime, Utc, Local, NaiveDate, NaiveDateTime};
 use anyhow::Result;
 use std::collections::HashMap;
 use tracing;
@@ -261,7 +261,7 @@ impl Channel {
             entries.into_iter().filter(|e| e.file_name.ends_with(&self.filter_extension)).collect()
         };
         if files.len() > 0 {
-            if files[0].link.contains("Pictures") || files[0].link.contains("Path"){
+            if files[0].link.contains("Pictures") || files[0].link.contains("Photos"){
                 files = Self::sort_photo_entries(files);
             }else{
                 files = super::formatter::clean_pub_date(files);
@@ -272,7 +272,6 @@ impl Channel {
     }
 
     fn sort_av_entries(mut files: Vec<MediaEntry>) -> Vec<MediaEntry> {
-        println!("Sorting AV entries");
         files.sort_by(|a, b| {
             let mut date_cmp = b.file_date_stamp.cmp(&a.file_date_stamp);
             if date_cmp == std::cmp::Ordering::Equal {
@@ -297,6 +296,7 @@ impl Channel {
                 let len = group.len() as i64;
                 for (i, entry) in group.iter_mut().enumerate() {
                     entry.pub_date = base_time + chrono::Duration::seconds(len - 1 - i as i64);
+                    //println!("{} {}", entry.normalized_event_id("zsv"), entry.pub_date.format("%m/%d %H:%M:%S"));
                 }
             }
         }
@@ -376,13 +376,12 @@ impl Channel {
 
         if let Some(start_date) = start_date {
             files = files.into_iter().filter(|entry| {
-                entry.pub_date >= start_date
+                entry.pub_date.date() >= start_date
             }).collect();
         }
 
         // Add items for each entry
         for entry in &files {
-            println!("First media type: {} {}", entry.file_name, entry.event_id("zsv"));
             entry.write_rss_item(writer, &self.media_link)?;
         }
 
@@ -412,7 +411,7 @@ pub struct MediaEntry {
     pub event_date_stamp: String,
     pub media_type: String,
     pub size: u64,
-    pub pub_date: NaiveDate,
+    pub pub_date: NaiveDateTime,
     pub modified: std::time::SystemTime,
 }
 
@@ -435,14 +434,14 @@ impl Default for MediaEntry {
             event_date_stamp: String::new(),
             media_type: String::new(),
             size: 0,
-            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Invalid default date"),
+            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Invalid default date").and_hms_opt(0,0,0).unwrap(),
             modified: std::time::UNIX_EPOCH,
         }
     }
 }
 
 impl MediaEntry {
-    pub fn new(guid: String, title: String, link: String, description: String, pub_date: NaiveDate, size: u64, modified: std::time::SystemTime) -> MediaEntry {
+    pub fn new(guid: String, title: String, link: String, description: String, pub_date: NaiveDateTime, size: u64, modified: std::time::SystemTime) -> MediaEntry {
         MediaEntry {
             guid,
             title,
@@ -456,6 +455,14 @@ impl MediaEntry {
     }
     pub fn event_id(&self, prefix : &str) -> String {
         format!("{}{}-{}", prefix, self.file_date_stamp, self.event)
+    }
+    pub fn normalized_event_id(&self, prefix : &str) -> String {
+        let event_part = if RE_ZSV_INDEX_SINGLE.is_match(&self.event) {
+            format!("0{}", &self.event)
+        } else {
+            self.event.to_string()
+        };
+        format!("{}{}-{}", prefix, self.file_date_stamp, event_part)
     }
     pub fn from_entry(entry: std::fs::DirEntry, channel: &Channel) -> std::io::Result<Self> {
         let metadata = entry.metadata()?;
@@ -472,10 +479,10 @@ impl MediaEntry {
         fi.modified = metadata.modified()?;
         // Set pub_date based on file_date_stamp if valid, otherwise use modified time
         fi.pub_date = if let Ok(date) = NaiveDate::parse_from_str(&fi.file_date_stamp, "%y%m%d") {
-            date
+            date.and_hms_opt(0,0,0).unwrap()
         } else {
             let modified_dt = DateTime::<Utc>::from(metadata.modified()?);
-            let date = modified_dt.date_naive();
+            let date = modified_dt.naive_utc();
             fi.file_date_stamp = date.format("%y%m%d").to_string();
             date
         };
@@ -502,10 +509,10 @@ impl MediaEntry {
         fi.modified = metadata.modified()?;
         // Set pub_date based on file_date_stamp if valid, otherwise use modified time
         fi.pub_date = if let Ok(date) = NaiveDate::parse_from_str(&fi.file_date_stamp, "%y%m%d") {
-            date
+            date.and_hms_opt(0,0,0).unwrap()
         } else {
             let modified_dt = DateTime::<Utc>::from(metadata.modified()?);
-            let date = modified_dt.date_naive();
+            let date = modified_dt.naive_utc();
             fi.file_date_stamp = date.format("%y%m%d").to_string();
             date
         };
@@ -514,23 +521,23 @@ impl MediaEntry {
         Ok(fi)
     }
 
-    fn normalize_date_range(&mut self, end_date: &str) -> NaiveDate {
+    fn normalize_date_range(&mut self, end_date: &str) -> NaiveDateTime {
         if end_date.is_empty() {
             return self.pub_date;
         }
         if let Ok(date) = NaiveDate::parse_from_str(end_date, "%y%m%d"){
             self.event_date_stamp = format!("{} to {}", self.pub_date.format("%m/%d"), date.format("%m/%d").to_string());
-            self.pub_date = date;
+            self.pub_date = date.and_hms_opt(0,0,0).unwrap();
         }else {
             let ymprefix = Utc::now().format("%y%m");
             if let Ok(date) = NaiveDate::parse_from_str(format!("{}{}", ymprefix, end_date).as_str(), "%y%m%d"){
                 self.event_date_stamp = format!("{} to {}", self.pub_date.format("%m/%d"), date.format("%m/%d").to_string());
-                self.pub_date = date;
+                self.pub_date = date.and_hms_opt(0,0,0).unwrap();
             }else {
                 let yprefix = Utc::now().format("%y");
                 if let Ok(date) = NaiveDate::parse_from_str(format!("{}{}", yprefix, end_date).as_str(), "%y%m%d"){
                     self.event_date_stamp = format!("{} to {}", self.pub_date.format("%m/%d"), date.format("%m/%d").to_string());
-                    self.pub_date = date;
+                    self.pub_date = date.and_hms_opt(0,0,0).unwrap();
                 }
             }
         }
@@ -585,7 +592,7 @@ impl MediaEntry {
 
     pub fn write_rss_item<W: std::io::Write>(&self, writer: &mut Writer<W>, media_link: &str) -> Result<()> {
         let url = format!("{}/{}", media_link.trim_end_matches('/'), self.file_name);
-        let datetime = self.pub_date.and_hms_opt(0, 0, 0).expect("Invalid time 00:00:00");
+        let datetime = self.pub_date;
         let pub_date: String = DateTime::<Utc>::from_naive_utc_and_offset(datetime, Utc).to_rfc3339();
 
         // Start item
@@ -829,6 +836,7 @@ lazy_static! {
     static ref RE_ZS_PATTERN: Regex = Regex::new(r"^zs(\d{6})(e?)(?:-?([a-z]{1,3}))?-(e?\d{1,2}[a-z]z?)(?:-?([^(.]+))?").expect("Invalid regex RE_ZS_PATTERN");
     static ref RE_HYMN_PATTERN: Regex = Regex::new(r"^zs(\d{6})-(s\d{1,2})-h(\d{4})(?:-?([^(.]+))?").expect("Invalid regex RE_HYMN_PATTERN");
     static ref RE_PHOTOS_ARCHIVE: Regex = Regex::new(r"^([\d]*[A-Za-z\'\-\_]+)(\d{6})(?:~(\d{1,4}))?([a-z])?\-([^(]+)").expect("Invalid regex RE_PHOTOS_ARCHIVE");
+    static ref RE_ZSV_INDEX_SINGLE: Regex = Regex::new(r"^(\d[a-z]?)$").expect("Invalid regex RE_ZSV_INDEX");
     static ref MIME_TYPE_MAP: HashMap<&'static str, &'static str> = {
         let mut map = HashMap::new();
         // Video formats

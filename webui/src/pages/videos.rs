@@ -9,7 +9,6 @@ use crate::components::main_top_nav::MainTopNav;
 use crate::components::calendar::Calendar;
 use chrono::{NaiveDate, Utc};
 use std::collections::HashMap;
-use std::sync::Arc;
 
  fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: WriteSignal<Option<NaiveDate>>) -> AnyView {
     view! {
@@ -120,6 +119,7 @@ pub fn VideoView() -> impl IntoView {
     /*  Effect: fetch the channel                                   */
     /* ----------------------------------------------------------- */
     Effect::new(move |_| {
+        let nav = navigate.clone();
         set_loading.set(true);
         set_error.set(String::new());
 
@@ -133,7 +133,13 @@ pub fn VideoView() -> impl IntoView {
                     set_channel.set(Some(ch));
                     set_date_map.set(Some(map));
                 },
-                Err(e) => set_error.set(e.to_string()),
+                Err(e) => {
+                    if e.to_string().contains("JWT token") {
+                        nav("/account/login", Default::default());
+                        //return;
+                    }
+                    set_error.set(e.to_string());
+                }
             }
             set_loading.set(false);
         });

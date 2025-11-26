@@ -1,17 +1,14 @@
 .PHONY: build run
+ENV_FILE:=.env.local
 
 build:
-	cargo build --bin webfs
+	ENV_PROFILE=$(ENV_FILE) cargo build --bin webfs
 
 release:
 	cargo build --bin webfs --release
 
 webfs: build
-	./target/debug/webfs --config=/ntc/filesync/rust/webfs/config-test.yaml
+	RUST_BACKTRACE=1 ENV_PROFILE=$(ENV_FILE) ./target/debug/webfs --config=/ntc/filesync/rust/webfs/config-test.yaml
 
 rel-webfs: release
-	./target/release/webfs --config=/ntc/filesync/rust/webfs/config-test.yaml
-
-rss: build
-	./target/debug/rssfeed --days=7 --lang=en --channel=videos-all --config=/ntc/filesync/rust/webfs/config-test.yaml --log-file ../logs/rssfeed.log
-	./target/debug/rssfeed --days=7 --lang=zh --channel=videos-all --config=/ntc/filesync/rust/webfs/config-test.yaml --log-file ../logs/rssfeed.log
+	ENV_PROFILE=$(ENV_FILE) ./target/release/webfs --config=/ntc/filesync/rust/webfs/config.yaml

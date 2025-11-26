@@ -8,6 +8,7 @@ use std::io::BufWriter;
 use std::path::Path;
 use std::time::Duration;
 use tokio::time;
+use tokio::sync::mpsc;
 use tracing;
 use lazy_static::lazy_static;
 use quick_xml::Writer;
@@ -33,12 +34,13 @@ pub async fn start_file_monitor(config: &MonitorConfig, storage: Arc<Mutex<Stora
     let regex = Regex::new(pattern)?;
 
     let scan_path = config.video_list_path.clone();
+    let storage_clone = storage.clone();
     tokio::spawn(async move {
         let mut interval = time::interval(Duration::from_secs(5)); // Poll every 5 seconds
         loop {
             interval.tick().await;
             tracing::info!("Scanning files... {}", scan_path);
-            if let Err(e) = scan_and_store(&storage, scan_path.as_str(), &regex).await {
+            if let Err(e) = scan_and_store(&storage_clone, scan_path.as_str(), &regex).await {
                 tracing::error!("Error scanning files: {}", e);
             }
         }
@@ -49,15 +51,25 @@ pub async fn start_file_monitor(config: &MonitorConfig, storage: Arc<Mutex<Stora
             rss_days = 7;
         }
         let start_date = Utc::now().date_naive() - chrono::Duration::days(rss_days as i64);
-        let rss_channels: Vec<(String, Channel)> = config.config.channels.values().flat_map(|m| m.iter().map(|(k,v)| (k.clone(), v.clone()))).collect();
+        let rss_channels: Vec<(String, Channel)> = config.config.channels.iter().flat_map(|(l,m)| m.iter().map(|(k,v)| (format!("{}/{}", *l, k), v.clone()))).collect();
+        let (tx1, rx1) = mpsc::channel::<(String, Channel)>(100);
         tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_secs(5)); // Poll every 5 seconds
+            let mut interval = time::interval(Duration::from_secs(5));
             loop {
                 interval.tick().await;
-                if let Err(e) = write_rss(&rss_channels, start_date, &cache){
-                    tracing::error!("Error writing RSS: {}", e);
+                if let Err(e) = fill_and_queue_channels(&rss_channels, &tx1).await {
+                    tracing::error!("Error filling channels: {}", e);
                 }
             }
+        });
+        let (tx2, rx2) = mpsc::channel::<(String, Channel)>(100);
+        let cache_clone = cache.clone();
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            fill_description(rx1, storage_clone, cache_clone, tx2).await;
+        });
+        tokio::spawn(async move {
+            rss_writer(rx2, start_date).await;
         });
     }else{
         tracing::warn!("RSS Refresh Skipped - RSS_DAYS not set");
@@ -65,14 +77,11 @@ pub async fn start_file_monitor(config: &MonitorConfig, storage: Arc<Mutex<Stora
     Ok(())
 }
 
-fn write_rss(channels_to_process: &[(String, Channel)], start_date: NaiveDate, cache: &std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<()> {
+async fn fill_and_queue_channels(channels_to_process: &[(String, Channel)], tx: &mpsc::Sender<(String, Channel)>) -> Result<()> {
     tracing::info!("Processing {} channels", channels_to_process.len());
     for (channel_name, ch) in channels_to_process {
-
-        let output_path = &ch.output_path;
-
         tracing::info!("---------------------------------------------------------");
-        tracing::info!("Refreshing RSS Channel {} {}", channel_name, output_path);
+        tracing::info!("Filling channel {} {}", channel_name, &ch.file_path);
 
         // Read and filter files from the directory
         let entries = Channel::read_dir(&ch)?;
@@ -81,26 +90,101 @@ fn write_rss(channels_to_process: &[(String, Channel)], start_date: NaiveDate, c
             continue;
         }
 
-        // Create output file and XML writer
-        let file = File::create(output_path).context("Failed to create output file")?;
-        let buf_writer = BufWriter::new(file);
-        let mut writer = Writer::new(buf_writer);
-
         // Process entries
         let mut ch = ch.clone();
         ch.set_entries(entries);
 
-        // Cache the channel
-        {
-            let mut cache = cache.lock().unwrap();
-            cache.insert(channel_name.to_string(), (ch.clone(), Utc::now()));
+        if let Err(e) = tx.send((channel_name.clone(), ch.clone())).await {
+            tracing::error!("Failed to send channel {} to queue: {}", channel_name, e);
         }
-
-        // Write RSS
-        ch.write_rss(&mut writer, Some(start_date))?;
-
-        tracing::info!("RSS feed written to {} with {} entries", output_path, ch.entries.len());
     }
+    Ok(())
+}
+
+async fn fill_description(mut rx: mpsc::Receiver<(String, Channel)>, storage: Arc<Mutex<Storage>>, cache: Arc<Mutex<HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>, tx: mpsc::Sender<(String, Channel)>) {
+    while let Some((cache_id, ch)) = rx.recv().await {
+        //let cache_id = format!("{}/{}", ch.language, channel_name);
+        let cached_ch_option = {
+            let _cache: std::sync::MutexGuard<'_, HashMap<String, (Channel, chrono::DateTime<Utc>)>> = cache.lock().unwrap();
+            _cache.get(&cache_id).cloned()
+        };
+        let filled_ch = {
+            let storage = storage.lock().unwrap();
+            storage.fill_descriptions(&ch, &cached_ch_option)
+        };
+        match filled_ch {
+            Ok(filled_ch) => {
+                // Check if channel has changed
+                let should_send = if let Some((ref cached_ch, _)) = cached_ch_option {
+                    let current_info: Vec<_> = filled_ch.entries.iter().map(|e| (&e.file_name, &e.description, &e.pub_date)).collect();
+                    let cached_info: Vec<_> = cached_ch.entries.iter().map(|e| (&e.file_name, &e.description, &e.pub_date)).collect();
+                    current_info != cached_info
+                } else {
+                    true
+                };
+
+                if should_send {
+                    // Cache the channel
+                    {
+                        let mut cache = cache.lock().unwrap();
+                        cache.insert(cache_id.to_string(), (filled_ch.clone(), Utc::now()));
+                    }
+                    // Log changes
+                    {
+                        if let Some((cached_ch, _)) = cached_ch_option {
+                            let current_map: std::collections::HashMap<_, _> = filled_ch.entries.iter().map(|e| (&e.file_name, &e.description)).collect();
+                            let cached_map: std::collections::HashMap<_, _> = cached_ch.entries.iter().map(|e| (&e.file_name, &e.description)).collect();
+                            for (fname, desc) in &current_map {
+                                if let Some(cached_desc) = cached_map.get(fname) {
+                                    if desc != cached_desc {
+                                        tracing::info!("Entry {} description changed: '{}' -> '{}'", fname, cached_desc, desc);
+                                    }
+                                } else {
+                                    tracing::info!("New entry: {}", fname);
+                                }
+                            }
+                            for fname in cached_map.keys() {
+                                if !current_map.contains_key(fname) {
+                                    tracing::info!("Removed entry: {}", fname);
+                                }
+                            }
+                        }
+                    }
+                    // Send to queue
+                    if let Err(e) = tx.send((cache_id.clone(), filled_ch)).await {
+                        tracing::error!("Failed to send channel {} to queue: {}", cache_id, e);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Error filling descriptions for {}: {}", cache_id, e);
+            }
+        }
+    }
+}
+
+async fn rss_writer(mut rx: mpsc::Receiver<(String, Channel)>, start_date: NaiveDate) {
+    while let Some((channel_name, mut ch)) = rx.recv().await {
+        if let Err(e) = write_single_rss(&channel_name, &mut ch, start_date) {
+            tracing::error!("Error writing RSS for {}: {}", channel_name, e);
+        }
+    }
+}
+
+fn write_single_rss(channel_name: &str, ch: &mut Channel, start_date: NaiveDate) -> Result<()> {
+    let output_path = ch.output_path.clone();
+
+    tracing::info!("Writing RSS for channel {} to {}", channel_name, output_path);
+
+    // Create output file and XML writer
+    let file = File::create(&output_path).context("Failed to create output file")?;
+    let buf_writer = BufWriter::new(file);
+    let mut writer = Writer::new(buf_writer);
+
+    // Write RSS
+    ch.write_rss(&mut writer, Some(start_date))?;
+
+    tracing::info!("RSS feed written to {} with {} entries", output_path, ch.entries.len());
     Ok(())
 }
 
@@ -146,22 +230,18 @@ async fn scan_and_store(storage: &Arc<Mutex<Storage>>, scan_path: &str, regex: &
 
 lazy_static! {
     static ref RE_ZSV_VIDEO_ID: Regex = Regex::new(r"^zsv(\d{6}[e]?)-(\d{1,3}[a-z]?)-(?:(\d{1,3}[a-z]?)-)?").expect("Invalid regex RE_ZSV_VIDEO_ID");
+    static ref RE_ZSV_INDEX_SINGLE: Regex = Regex::new(r"^(\d[a-z]?)$").expect("Invalid regex RE_ZSV_INDEX");
 }
 
 pub fn read_file_descriptor(path: &str) -> Result<Vec<FileDesc>> {
-    // -----------------------------------------------------------------
     // 1. Open the .docx file (change the path if needed)
-    // -----------------------------------------------------------------
     let path = std::path::Path::new(path);
     let mut file = std::fs::File::open(path)?;
     let mut buf = Vec::new();
     std::io::Read::read_to_end(&mut file, &mut buf)?;
     let docx = docx_rs::read_docx(&buf)?;
-    //let docx = Docx::read(file)?;
 
-    // -----------------------------------------------------------------
     // 2. Find the first table (your list is the only table)
-    // -----------------------------------------------------------------
     let table = docx
         .document
         .children
@@ -172,17 +252,13 @@ pub fn read_file_descriptor(path: &str) -> Result<Vec<FileDesc>> {
         })
         .ok_or_else(|| anyhow::anyhow!("No table found in the document"))?;
 
-    // -----------------------------------------------------------------
     // 3. Skip the header row (順序 | 錄影內容 | 檔案數量)
-    // -----------------------------------------------------------------
     let rows: Vec<_> = table.rows.iter().map(|child| match child {
         docx_rs::TableChild::TableRow(r) => r,
     }).collect();
     let data_rows = &rows[1..]; // everything after the header
 
-    // -----------------------------------------------------------------
     // 4. Parse each row
-    // -----------------------------------------------------------------
     let mut records = Vec::new();
 
     for row in data_rows {
@@ -197,7 +273,7 @@ pub fn read_file_descriptor(path: &str) -> Result<Vec<FileDesc>> {
 
         // Expected layout: [seq, name+desc, file_count]
         if cells.len() != 3 {
-            eprintln!("Skipping malformed row: {:?}", cells);
+            tracing::error!("Skipping malformed row: {:?}", cells);
             continue;
         }
 
@@ -231,7 +307,13 @@ pub fn read_file_descriptor(path: &str) -> Result<Vec<FileDesc>> {
 
         if let Some(caps) = RE_ZSV_VIDEO_ID.captures(&fname) {
             let prefix: &str = caps.get(0).expect("No match group 0").as_str();
-            let id = format!("zsv{}-{}", &caps[1], &caps[2]);
+        
+            let second_part = if RE_ZSV_INDEX_SINGLE.is_match(&caps[2]) {
+                format!("0{}", &caps[2])
+            } else {
+                caps[2].to_string()
+            };
+            let id = format!("zsv{}-{}", &caps[1], second_part);
             let mut eng_descr = fname.as_str().strip_prefix(prefix).unwrap_or(fname.as_str()).to_string();
             eng_descr = crate::models::formatter::format_eng_descr(&eng_descr);
 
