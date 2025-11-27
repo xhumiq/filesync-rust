@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, Utc};
+use chrono::{NaiveDate, NaiveDateTime, Utc};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Channel {
@@ -67,20 +67,21 @@ impl Channel {
         // Sort entries by pub_date
         self.entries.sort_by(|a, b| a.pub_date.cmp(&b.pub_date));
 
-        let first_date = self.entries.first()?.pub_date;
-        let last_date = self.entries.last()?.pub_date;
+        let first_date = self.entries.first()?.pub_date.date();
+        let last_date = self.entries.last()?.pub_date.date();
 
         Some((first_date, last_date))
     }
 
     pub fn date_range(&self, start: NaiveDate, end: NaiveDate) -> Vec<MediaEntry> {
         self.entries.iter().filter(|entry| {
-            entry.pub_date >= start && entry.pub_date <= end
+            let entry_date = entry.pub_date.date();
+            entry_date >= start && entry_date <= end
         }).cloned().collect()
     }
 
     pub fn entries_for_date(&self, date: NaiveDate) -> Vec<MediaEntry> {
-        self.entries.iter().filter(|e| e.pub_date == date).cloned().collect()
+        self.entries.iter().filter(|e| e.pub_date.date() == date).cloned().collect()
     }
 
     pub fn past_3_days(&self) -> Vec<MediaEntry> {
@@ -118,8 +119,9 @@ mod tests {
             location: "test".to_string(),
             event_date_stamp: "test".to_string(),
             media_type: "test".to_string(),
+            mime_type: "test".to_string(),
             size: 0,
-            pub_date,
+            pub_date: pub_date.and_hms_opt(0, 0, 0).expect("Invalid test time"),
             modified: UNIX_EPOCH,
         }
     }
@@ -164,24 +166,25 @@ fn default_generator() -> String {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MediaEntry {
-	pub guid: String,
-	pub title: String,
-	pub link: String,
-	pub description: String,
-  pub content_type: String,
-  pub file_name: String,
-  pub file_date_stamp: String,
-  pub day_night: String,
-  pub event: String,
-  pub event_code: String,
-  pub index: String,
-  pub event_desc: String,
-  pub location: String,
-  pub event_date_stamp: String,
-  pub media_type: String,
-  pub size: u64,
-  pub pub_date: NaiveDate,
-  pub modified: std::time::SystemTime,
+    pub guid: String,
+    pub title: String,
+    pub link: String,
+    pub description: String,
+    pub content_type: String,
+    pub file_name: String,
+    pub file_date_stamp: String,
+    pub day_night: String,
+    pub event: String,
+    pub event_code: String,
+    pub index: String,
+    pub event_desc: String,
+    pub location: String,
+    pub event_date_stamp: String,
+    pub media_type: String,
+    pub mime_type: String,
+    pub size: u64,
+    pub pub_date: NaiveDateTime,
+    pub modified: std::time::SystemTime,
 }
 
 impl Default for MediaEntry {
@@ -202,8 +205,9 @@ impl Default for MediaEntry {
             location: String::new(),
             event_date_stamp: String::new(),
             media_type: String::new(),
+            mime_type: String::new(),
             size: 0,
-            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Invalid default date"),
+            pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Invalid default date").and_hms_opt(0, 0, 0).expect("Invalid default time"),
             modified: std::time::UNIX_EPOCH,
         }
     }

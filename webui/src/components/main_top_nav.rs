@@ -53,9 +53,7 @@ pub fn MainTopNav() -> impl IntoView {
                             <A href="/ui/photos" attr:class="text-white hover:bg-teal-700">{t!(i18n, photos)}</A>
                         </div>
                         <ul tabindex="0" class="dropdown-content menu bg-teal-600 text-white rounded-md z-[1] w-52 p-2 shadow">
-                            <li><A href="/ui/photos/today" attr:class="text-white hover:bg-teal-700">{t!(i18n, today)}</A></li>
-                            <li><A href="/ui/photos/3days" attr:class="text-white hover:bg-teal-700">{t!(i18n, past_3_days)}</A></li>
-                            <li><A href="/ui/photos/region" attr:class="text-white hover:bg-teal-700">{t!(i18n, region)}</A></li>
+                            <li><A href="/ui/photos/this_week" attr:class="text-white hover:bg-teal-700">{t!(i18n, this_week)}</A></li>
                         </ul>
                     </div>
                     

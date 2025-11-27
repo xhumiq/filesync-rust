@@ -3,8 +3,7 @@ use anyhow::{anyhow, Result as AnyhowResult};
 use crate::models::channel::Channel;
 
 pub fn get_api_file_listing_url() -> String {
-    std::env::var("API_FILE_LISTING_URL")
-        .unwrap_or_else(|_| "/fs/v1".to_string())
+    match option_env!("API_FILE_LISTING_URL") { Some(s) => s.to_string(), None => "/fs/v1".to_string() }
 }
 
 pub fn get_jwt_token() -> Option<String> {
@@ -41,9 +40,20 @@ pub async fn fetch_files(path: String) -> AnyhowResult<Channel> {
         return Err(anyhow!("HTTP {} {}", resp.status(), resp.status_text()));
     }
 
-    resp.json::<Channel>()
-        .await
-        .map_err(|e| anyhow!("JSON error: {e:?}"))
+    let response_text = resp.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
+    
+    serde_json::from_str::<Channel>(&response_text)
+        .map_err(|e| {
+            web_sys::console::log_1(&format!("JSON parsing error: {e:?}").into());
+            let substring = if response_text.len() > 1000 {
+                let end = std::cmp::min(response_text.len(), 1127);
+                response_text.get(1000..end).unwrap_or(&response_text)
+            } else {
+                &response_text
+            };
+            web_sys::console::log_1(&format!("Response body substring: {}", substring).into());
+            anyhow!("JSON error: {e:?}")
+        })
 }
 
 pub fn format_size(bytes: u64) -> String {

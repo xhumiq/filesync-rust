@@ -3,8 +3,7 @@ use wasm_bindgen_futures::spawn_local;
 use crate::api::*;
 use crate::icons::*;
 use crate::models::channel::{Channel, MediaEntry};
-use chrono::{NaiveDate, Weekday, Datelike};
-use std::sync::Arc;
+use chrono::NaiveDate;
 
 fn file_list_view(entries: Vec<MediaEntry>) -> AnyView {
     view! {
@@ -27,7 +26,8 @@ fn file_list_view(entries: Vec<MediaEntry>) -> AnyView {
                             view! {
                                 <div class={format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)}>
                                     <div class="flex items-center flex-1 min-w-0">
-                                        {film_icon()}
+                                        <span style="margin-left: 15px;margin-right: 10px;"><MimeTypeIcon mime_type=entry.mime_type.clone() /></span>
+                                        <span style="display: inline-block;margin-right: 10px">{entry.mime_type}</span>
                                         <span class="truncate">{entry.file_name}</span>
                                     </div>
                                     <div class="w-24 text-sm text-right text-gray-600">
@@ -58,7 +58,7 @@ pub fn Folder() -> impl IntoView {
     let (channel, set_channel) = signal(Option::<Channel>::None);
     let (loading, set_loading) = signal(false);
     let (error, set_error) = signal(String::new());
-    let (weeks, set_weeks) = signal(Option::<Vec<(NaiveDate, NaiveDate)>>::None);
+    let (_weeks, _set_weeks) = signal(Option::<Vec<(NaiveDate, NaiveDate)>>::None);
 
     /* ----------------------------------------------------------- */
     /*  Effect: fetch whenever the route path changes               */

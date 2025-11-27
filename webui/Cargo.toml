@@ -28,6 +28,7 @@ chrono = { version = "0.4", features = ["serde"] }
 leptos_i18n = {version = "0.6.0-rc.2"}
 built = "0.8.0"
 leptos_config = "0.8.8"
+lazy_static = "1.5.0"
 
 # utils
 # strum = { version = "0.25", features = ["derive", "strum_macros"] }

@@ -12,4 +12,4 @@ css:
 	npm run dev
 
 serve:
-	ENV_PROFILE=$(ENV_FILE) ~/.cargo/bin/trunk serve --port 3030
+	~/.cargo/bin/trunk serve --port 3030

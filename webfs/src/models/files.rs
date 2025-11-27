@@ -57,6 +57,7 @@ impl Config {
                     media_link: format!("https://{}.{}{}{}", self.default.server_name, self.default.domain, self.default.base_media_url, relative),
                     server_name: self.default.server_name.clone(),
                     category: self.default.category.clone(),
+                    source: "explorer".to_string(),
                     author: self.default.author.clone(),
                     generator: self.default.generator.clone(),
                     file_path: path.to_string(),
@@ -117,6 +118,8 @@ pub struct Channel {
     pub description: String,
     #[serde(default)]
     pub category: String,
+    #[serde(default)]
+    pub source: String,
     pub language: String,
     #[serde(default)]
     pub author: String,
@@ -146,6 +149,7 @@ impl Default for Channel {
             media_link: String::new(),
             description: String::new(),
             category: String::new(),
+            source: String::new(),
             language: "en-us".to_string(),
             author: String::new(),
             generator: "rss_writer".to_string(),
@@ -220,6 +224,9 @@ impl Channel {
                 }
                 if channel.category.is_empty() {
                     channel.category = config.default.category.clone();
+                }
+                if channel.source.is_empty() {
+                    channel.source = "config".to_string();
                 }
                 if channel.author.is_empty() {
                     channel.author = config.default.author.clone();
@@ -410,6 +417,7 @@ pub struct MediaEntry {
     pub location: String,
     pub event_date_stamp: String,
     pub media_type: String,
+    pub mime_type: String,
     pub size: u64,
     pub pub_date: NaiveDateTime,
     pub modified: std::time::SystemTime,
@@ -433,6 +441,7 @@ impl Default for MediaEntry {
             location: String::new(),
             event_date_stamp: String::new(),
             media_type: String::new(),
+            mime_type: String::new(),
             size: 0,
             pub_date: NaiveDate::from_ymd_opt(1970, 1, 1).expect("Invalid default date").and_hms_opt(0,0,0).unwrap(),
             modified: std::time::UNIX_EPOCH,
@@ -453,6 +462,16 @@ impl MediaEntry {
             ..Default::default()
         }
     }
+    pub fn new_folder(full_path: String, name: String, modified: std::time::SystemTime) -> MediaEntry {
+        MediaEntry {
+            guid: full_path.clone(),
+            title: name,
+            link: full_path.clone(),
+            modified,
+            content_type: "folder".to_string(),
+            ..Default::default()
+        }
+    }
     pub fn event_id(&self, prefix : &str) -> String {
         format!("{}{}-{}", prefix, self.file_date_stamp, self.event)
     }
@@ -467,6 +486,12 @@ impl MediaEntry {
     pub fn from_entry(entry: std::fs::DirEntry, channel: &Channel) -> std::io::Result<Self> {
         let metadata = entry.metadata()?;
         if !metadata.is_file() {
+            if metadata.is_dir() && channel.source == "explorer" {
+                let fname = entry.file_name().to_string_lossy().to_string();
+                let folder = MediaEntry::new_folder(entry.path().to_string_lossy().to_string(), fname, metadata.modified()?);
+                println!("Folder: {}", folder.guid);
+                return Ok(folder);
+            }
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "not a file"));
         }
 
@@ -643,7 +668,7 @@ fn write_element<W: std::io::Write>(
 fn parse_photo_archive_name(filename: &str) -> MediaEntry {
     let base = std::path::Path::new(filename).file_name().unwrap_or_default().to_string_lossy().to_string();
     let mut fi = MediaEntry {
-        media_type: super::formatter::parseMediaType(filename),
+        media_type: super::formatter::parse_media_type(filename),
         file_name: base.to_string(),
         location: base.to_string(),
         content_type: "photos".to_string(),
@@ -664,7 +689,7 @@ fn parse_photo_archive_name(filename: &str) -> MediaEntry {
 fn parse_file_name(filename: &str) -> MediaEntry {
     let base = std::path::Path::new(filename).file_name().unwrap_or_default().to_string_lossy().to_string();
     let mut fi = MediaEntry {
-        media_type: super::formatter::parseMediaType(filename),
+        media_type: super::formatter::parse_media_type(filename),
         file_name: base.to_string(),
         ..Default::default()
     };

@@ -9,17 +9,17 @@ use crate::components::main_top_nav::MainTopNav;
 use crate::components::calendar::Calendar;
 use chrono::{NaiveDate, Utc, Duration, Datelike};
 use std::collections::HashMap;
-use std::sync::Arc;
 use gloo::utils::document;
 use gloo::timers::callback::Timeout;
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
+use crate::i18n::{use_i18n, t};
 
 fn compute_weeks(entries: &[MediaEntry]) -> Vec<(NaiveDate, NaiveDate)> {
     let mut weeks = Vec::new();
     if entries.is_empty() {
         return weeks;
     }
-    let mut sorted_dates: Vec<NaiveDate> = entries.iter().map(|e| e.pub_date).collect();
+    let mut sorted_dates: Vec<NaiveDate> = entries.iter().map(|e| e.pub_date.date()).collect();
     sorted_dates.sort();
     sorted_dates.dedup();
     let mut current_week_start = None;
@@ -41,11 +41,12 @@ fn compute_weeks(entries: &[MediaEntry]) -> Vec<(NaiveDate, NaiveDate)> {
 }
 
  fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: WriteSignal<Option<NaiveDate>>) -> AnyView {
+    let i18n = use_i18n();
     view! {
         <div class="w-full">
             <div class="border border-gray-200 rounded-b-lg" style="max-width: 400px;margin: 0 auto;">
                 <div class="flex flex-col justify-center p-4 space-y-2">
-                    <A href="/ui/photos/this_week" attr:class="w-full btn btn-lg btn-accent">今天 Today</A>
+                    <A href="/ui/photos/this_week" attr:class="w-full btn btn-lg btn-accent">{t!(i18n, this_week)}</A>
                     <Calendar available_dates=date_map set_selected_date=set_selected_date />
                 </div>
             </div>
@@ -54,36 +55,66 @@ fn compute_weeks(entries: &[MediaEntry]) -> Vec<(NaiveDate, NaiveDate)> {
 }
 
 fn photo_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
+    let i18n = use_i18n();
     // Sort entries by pub_date, then by event
     entries.sort_by(|a, b| {
-        a.pub_date.cmp(&b.pub_date).then(a.event.cmp(&b.event))
+        a.pub_date.date().cmp(&b.pub_date.date()).then(a.event.cmp(&b.event))
     });
+
+    let first_date = entries[0].pub_date.date();
+    let prev_date = first_date - chrono::Duration::days(7);
+    let last_date = entries[entries.len()-1].pub_date.date();
+    let next_date = last_date + chrono::Duration::days(1);
 
     view! {
         <div id="segmented-list" class="w-full">
             <div class="border border-gray-200 rounded-b-lg">
-                {move || {
-                    if entries.is_empty() {
+                {
+                let entries_clone = entries.clone();
+                move || {
+                    if entries_clone.is_empty() {
                         view! {
                             <div class="flex items-center justify-center h-32 text-gray-500">
-                                "No files found"
+                                {t!(i18n, no_files_found)}
                             </div>
                         }.into_any()
                     } else {
-                        let mut prev_date = None::<NaiveDate>;
-                        entries.iter().enumerate().map(|(index, entry)| {
+                        let today = Utc::now().date_naive();
+                        let mut curr_date = None::<NaiveDate>;
+                        let mut curr_event = None::<String>;
+                        entries_clone.iter().enumerate().map(|(index, entry)| {
                             let entry = entry.clone();
                             let size_text = format_size(entry.size);
                             let bg_class = if index % 2 == 0 { "bg-white" } else { "bg-gray-50" };
 
-                            let date_header = if Some(entry.pub_date) != prev_date {
-                                prev_date = Some(entry.pub_date);
+                            let date_header = if Some(entry.pub_date.date()) != curr_date {
+                                curr_date = Some(entry.pub_date.date());
                                 Some(view! {
-                                    <div id={format!("date-{}", entry.pub_date.format("%Y%m%d"))} class="flex items-center justify-between px-4 py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b">
-                                        <span>{entry.pub_date.format("%A, %B %e, %Y").to_string()}</span>
-                                        <A href="/ui/photos/date" attr:class="btn btn-sm btn-ghost">
-                                            {calendar_icon()}
-                                        </A>
+                                    <div id={format!("date-{}", entry.pub_date.date().format("%Y%m%d"))} class="flex items-center justify-between px-4 py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b">
+                                        <span>{entry.pub_date.date().format("%A, %B %e, %Y").to_string()}</span>
+                                        <div class="flex items-center gap-2">
+                                            {if (entry.pub_date.date() == first_date || entry.pub_date.date() == last_date) {
+                                                view! {
+                                                    <A href=format!("/ui/photos/{}", prev_date.format("%y%m%d")) attr:class="btn btn-sm btn-ghost">
+                                                        {t!(i18n, past_week)}
+                                                    </A>
+                                                }.into_any()
+                                            } else{
+                                                view! { <></> }.into_any()
+                                            }}
+                                            {if next_date <= today && (entry.pub_date.date() == first_date || entry.pub_date.date() == last_date) {
+                                                view! {
+                                                    <A href=format!("/ui/photos/{}", next_date.format("%y%m%d")) attr:class="btn btn-sm btn-ghost">
+                                                        {t!(i18n, next_week)}
+                                                    </A>
+                                                }.into_any()
+                                            } else{
+                                                view! { <></> }.into_any()
+                                            }}
+                                            <A href="/ui/photos/date" attr:class="btn btn-sm btn-ghost" attr:style="padding-x:15px;">
+                                                {calendar_icon()}
+                                            </A>
+                                        </div>
                                     </div>
                                 })
                             } else {
@@ -95,7 +126,7 @@ fn photo_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                                     {date_header}
                                     <A href=format!("http://localhost:3000/fs/v1/Music/ZSF/Chinese/{}", entry.file_name) attr:class=format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)>
                                         <div class="flex items-center flex-1 min-w-0">
-                                            {photo_icon()}
+                                            <span style="margin-left: 15px;margin-right: 10px;">{photo_icon()}</span>
                                             <span class="truncate">{
                                                 let mut name = entry.location.clone();
                                                 name = if name.is_empty() { entry.file_name.clone() } else { name };
@@ -131,9 +162,10 @@ fn photo_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
 /* --------------------------------------------------------------- */
 #[component]
 pub fn PhotosView() -> impl IntoView {
-    let navigate = Arc::new(use_navigate());
+    let i18n = use_i18n();
+    let navigate = use_navigate();
     let navigate_for_effect = navigate.clone();
-    let navigate_for_view = navigate.clone();
+    let _navigate_for_view = navigate.clone();
     let params = leptos_router::hooks::use_params_map();
     let path = move || {
         params
@@ -147,7 +179,7 @@ pub fn PhotosView() -> impl IntoView {
     let (entries, set_entries) = signal(Vec::<MediaEntry>::new());
     let (date_map, set_date_map) = signal(Option::<HashMap<NaiveDate, usize>>::None);
     let (selected_date, set_selected_date) = signal(None::<NaiveDate>);
-    let (date_range, set_date_range) = signal(Option::<(NaiveDate, NaiveDate)>::None);
+    let (_date_range, set_date_range) = signal(Option::<(NaiveDate, NaiveDate)>::None);
 
     /* ----------------------------------------------------------- */
     /*  Effect: fetch the channel                                   */
@@ -161,7 +193,7 @@ pub fn PhotosView() -> impl IntoView {
                 Ok(ch) => {
                     let mut map = HashMap::new();
                     for entry in &ch.entries {
-                        *map.entry(entry.pub_date).or_insert(0) += 1;
+                        *map.entry(entry.pub_date.date()).or_insert(0) += 1;
                     }
                     set_channel.set(Some(ch));
                     set_date_map.set(Some(map));
@@ -265,7 +297,7 @@ pub fn PhotosView() -> impl IntoView {
                                     }
                                 }).forget();
                                 return;
-                            } else if let Ok(mut end_date) = NaiveDate::parse_from_str(parts[1], "%y%m%d") {
+                            } else if let Ok(end_date) = NaiveDate::parse_from_str(parts[1], "%y%m%d") {
                                 let mut start = date.min(end_date);
                                 let mut end = date.max(end_date);
                                 let today = Utc::now().date_naive();
@@ -297,7 +329,7 @@ pub fn PhotosView() -> impl IntoView {
                     Vec::new()
                 };
                 if ents.len() > 0 {
-                    set_date_range.set(Some((ents[0].pub_date, ents[ents.len()-1].pub_date)));
+                    set_date_range.set(Some((ents[0].pub_date.date(), ents[ents.len()-1].pub_date.date())));
                 }else{
                     set_date_range.set(Option::None);
                 }
@@ -329,6 +361,9 @@ pub fn PhotosView() -> impl IntoView {
                     } else if !error.get().is_empty() {
                         // DaisyUI alert
                         view! {
+                            <h3 class="pb-2 text-4xl font-bold text-gray-800 border-b-4 border-yellow-500 w-fit" style="font-family: 'Georgia';margin-bottom: 1rem;">
+                                {t!(i18n, ntc_photos)}
+                            </h3>
                             <div class="shadow-lg alert alert-error">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0 w-6 h-6 stroke-current" fill="none" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -338,18 +373,26 @@ pub fn PhotosView() -> impl IntoView {
                             {menu_view(date_map.get(), set_selected_date)}
                         }.into_any()
                     } else if path() == "date" {
-                        menu_view(date_map.get(), set_selected_date)
+                        view! {
+                            <h3 class="pb-2 text-4xl font-bold text-gray-800 border-b-4 border-yellow-500 w-fit" style="font-family: 'Georgia';margin-bottom: 1rem;">
+                                {t!(i18n, ntc_photos)}
+                            </h3>
+                            {menu_view(date_map.get(), set_selected_date)}
+                        }.into_any()
                     } else {
                         if entries.is_empty() {
                             if path()!="" {
                                 view! {
                                     <>
+                                        <h3 class="pb-2 text-4xl font-bold text-gray-800 border-b-4 border-yellow-500 w-fit" style="font-family: 'Georgia';margin-bottom: 1rem;">
+                                            {t!(i18n, ntc_photos)}
+                                        </h3>
                                         <div class="flex justify-center">
                                             <div class="alert alert-info">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0 w-6 h-6 stroke-current" fill="none" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                                                 </svg>
-                                                <span>No photo entries for the selected date range.</span>
+                                                <span>{t!(i18n, no_entries_in_date_range)}</span>
                                             </div>
                                         </div>
                                         {menu_view(date_map.get(), set_selected_date)}
@@ -359,28 +402,12 @@ pub fn PhotosView() -> impl IntoView {
                                 menu_view(date_map.get(), set_selected_date)
                             }
                         }else{
-                            let prev_date = entries[entries.len()-1].pub_date - chrono::Duration::days(7);
-                            let next_date = entries[0].pub_date + chrono::Duration::days(1);
-                            let today = Utc::now().date_naive();
                             view!{
                                 <>
-                                    <div class="flex justify-center mb-4">
-                                        <A href=format!("/ui/photos/{}", prev_date.format("%y%m%d")) attr:class="btn btn-lg btn-accent">
-                                            Previous Week
-                                        </A>
-                                    </div>
+                                    <h3 class="pb-2 text-4xl font-bold text-gray-800 border-b-4 border-yellow-500 w-fit" style="font-family: 'Georgia';margin-bottom: 1rem;">
+                                        {t!(i18n, ntc_photos)}
+                                    </h3>
                                     {photo_list_view(entries)}
-                                    {if next_date <= today {
-                                        view! {
-                                            <div class="flex justify-center mt-4">
-                                                <A href=format!("/ui/photos/{}", next_date.format("%y%m%d")) attr:class="btn btn-lg btn-accent">
-                                                    Next Week
-                                                </A>
-                                            </div>
-                                        }.into_any()
-                                    } else {
-                                        view! { <div></div> }.into_any()
-                                    }}
                                 </>
                             }.into_any()
                         }
