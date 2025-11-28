@@ -155,6 +155,7 @@ pub fn PhotosView() -> impl IntoView {
     let i18n = use_i18n();
     let navigate = use_navigate();
     let navigate_for_effect = navigate.clone();
+    let navigate_for_fetch = navigate.clone();
     let _navigate_for_view = navigate.clone();
     let params = leptos_router::hooks::use_params_map();
     let path = move || {
@@ -177,6 +178,7 @@ pub fn PhotosView() -> impl IntoView {
     Effect::new(move |_| {
         set_loading.set(true);
         set_error.set(String::new());
+        let nav = navigate_for_fetch.clone();
 
         spawn_local(async move {
             match fetch_files("Photos/Chinese".to_string()).await {
@@ -188,7 +190,13 @@ pub fn PhotosView() -> impl IntoView {
                     set_channel.set(Some(ch));
                     set_date_map.set(Some(map));
                 },
-                Err(e) => set_error.set(e.to_string()),
+                Err(e) => {
+                    if e.to_string().contains("JWT token") {
+                        nav("/account/login", Default::default());
+                        //return;
+                    }
+                    set_error.set(e.to_string());
+                }
             }
             set_loading.set(false);
         });

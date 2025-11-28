@@ -46,6 +46,7 @@ pub fn MainTopNav() -> impl IntoView {
                             <li><A href="/ui/videos/date" attr:class="text-white hover:bg-teal-700">{t!(i18n, choose_date)}</A></li>
                             <li><A href="/files/Compressed/english" attr:class="text-white hover:bg-teal-700">{t!(i18n, compressed_english)}</A></li>
                             <li><A href="/files/Compressed/chinese" attr:class="text-white hover:bg-teal-700">{t!(i18n, compressed_chinese)}</A></li>
+                            <li><A href="/files/LiteraryCenter/Videos" attr:class="text-white hover:bg-teal-700">{t!(i18n, video_documentaries)}</A></li>
                         </ul>
                     </div>
 
@@ -56,6 +57,10 @@ pub fn MainTopNav() -> impl IntoView {
                         <ul tabindex="0" class="dropdown-content menu bg-teal-600 text-white rounded-md z-[1] w-52 p-2 shadow">
                             <li><A href="/ui/audio/this_week" attr:class="text-white hover:bg-teal-700" on:click=move |_| set_audio_dropdown_open.set(false)>{t!(i18n, this_week)}</A></li>
                             <li><A href="/ui/audio/date" attr:class="text-white hover:bg-teal-700" on:click=move |_| set_audio_dropdown_open.set(false)>{t!(i18n, choose_date)}</A></li>
+                            <li><A href="/files/LiteraryCenter/AudioMessages" attr:class="text-white hover:bg-teal-700">{t!(i18n, recorded_messages)}</A></li>
+                            <li><A href="/files/LiteraryCenter/AudioBooks/chinese" attr:class="text-white hover:bg-teal-700">{t!(i18n, audio_books_chinese)}</A></li>
+                            <li><A href="/files/LiteraryCenter/AudioBooks/english" attr:class="text-white hover:bg-teal-700">{t!(i18n, audio_books_english)}</A></li>
+                            <li><A href="/files/LiteraryCenter/AudioBooks/taiwanese" attr:class="text-white hover:bg-teal-700">{t!(i18n, audio_books_taiwanese)}</A></li>
                         </ul>
                     </div>
                     
@@ -64,11 +69,14 @@ pub fn MainTopNav() -> impl IntoView {
                             {t!(i18n, docs)}
                         </div>
                         <ul tabindex="0" class="dropdown-content menu bg-teal-600 text-white rounded-md z-[1] w-52 p-2 shadow">
+                            <li><A href="/files/LiteraryCenter/SpiritualScripts/AudioTranscript" attr:class="text-white hover:bg-teal-700">{t!(i18n, audio_transcripts)}</A></li>
+                            <li><A href="/files/LiteraryCenter/SpiritualBooks" attr:class="text-white hover:bg-teal-700">{t!(i18n, spiritual_books_chinese)}</A></li>
+                            <li><A href="/files/LiteraryCenter/SpiritualBooks/O-English" attr:class="text-white hover:bg-teal-700">{t!(i18n, spiritual_books_english)}</A></li>
                             <li><A href="/files/LiteraryCenter/SpiritualScripts/HPrayer" attr:class="text-white hover:bg-teal-700">{t!(i18n, grandpas_prayer)}</A></li>
                             <li><A href="/files/LiteraryCenter/SpiritualScripts/HMessage" attr:class="text-white hover:bg-teal-700">{t!(i18n, grandpas_message)}</A></li>
                             <li><A href="/files/LiteraryCenter/SpiritualScripts/OpenLetter" attr:class="text-white hover:bg-teal-700">{t!(i18n, open_letter)}</A></li>
+                            <li><A href="/files/LiteraryCenter/TruthEdification" attr:class="text-white hover:bg-teal-700">{t!(i18n, truth_edification)}</A></li>
                             <li><A href="/files/LiteraryCenter/SpiritualScripts/Other" attr:class="text-white hover:bg-teal-700">{t!(i18n, other)}</A></li>
-                            <li><A href="/files/LiteraryCenter/AudioBooks/english" attr:class="text-white hover:bg-teal-700">{t!(i18n, audio_books)}</A></li>
                             <li><A href="/files/LiteraryCenter/DietRevolution/english" attr:class="text-white hover:bg-teal-700">{t!(i18n, diet_revolution)}</A></li>
                         </ul>
                     </div>
@@ -121,7 +129,7 @@ pub fn MainTopNav() -> impl IntoView {
                         <ul tabindex="0" class="dropdown-content menu bg-teal-600 text-white rounded-md z-[1] w-52 p-2 shadow">
                             <li><A href="/files/Graphics/backdrop" attr:class="text-white hover:bg-teal-700">{t!(i18n, banners)}</A></li>
                             <li><A href="/files/Graphics/bookmark" attr:class="text-white hover:bg-teal-700">{t!(i18n, bookmarks)}</A></li>
-                            <li><A href="/files/Graphics/others" attr:class="text-white hover:bg-teal-700">{t!(i18n, others)}</A></li>
+                            <li><A href="/files/Graphics/others" attr:class="text-white hover:bg-teal-700">{t!(i18n, other_graphics)}</A></li>
                             <li><A href="/files/Graphics/T-shirt" attr:class="text-white hover:bg-teal-700">{t!(i18n, tshirt)}</A></li>
                         </ul>
                     </div>

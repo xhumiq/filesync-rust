@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 use leptos::prelude::*;
 use leptos_router::components::*;
+use leptos_router::hooks::use_navigate;
 use wasm_bindgen_futures::spawn_local;
 use crate::api::*;
 use crate::icons::*;
@@ -124,6 +125,8 @@ fn file_list_view(path: &str, entries: Vec<MediaEntry>) -> AnyView {
 /* --------------------------------------------------------------- */
 #[component]
 pub fn Folder() -> impl IntoView {
+    let navigate = use_navigate();
+    let navigate_for_fetch = navigate.clone();
     let params = leptos_router::hooks::use_params_map();
     let path = move || {
         params
@@ -144,14 +147,20 @@ pub fn Folder() -> impl IntoView {
         if cur.is_empty() {
             return;
         }
-
+        let nav = navigate_for_fetch.clone();
         set_loading.set(true);
         set_error.set(String::new());
 
         spawn_local(async move {
             match fetch_files(cur).await {
                 Ok(ch) => set_channel.set(Some(ch)),
-                Err(e) => set_error.set(e.to_string()),
+                Err(e) => {
+                    if e.to_string().contains("JWT token") {
+                        nav("/account/login", Default::default());
+                        //return;
+                    }
+                    set_error.set(e.to_string());
+                }
             }
             set_loading.set(false);
         });

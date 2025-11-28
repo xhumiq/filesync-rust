@@ -26,7 +26,12 @@ pub fn get_current_language_code() -> String {
         // First check localStorage
         if let Ok(Some(storage)) = window.local_storage() {
             if let Ok(Some(locale_str)) = storage.get_item("locale") {
-                return locale_str;
+                if locale_str.starts_with("zh") {
+                    return "zh".to_string();
+                } else if locale_str.starts_with("fr") {
+                    return "fr".to_string();
+                }
+                return "en".to_string();
             }
         }
 
@@ -70,7 +75,7 @@ pub fn App() -> impl IntoView {
             <Html attr:lang="en" attr:dir="ltr" attr:data-theme="light" />
 
             // sets the document title
-            <Title text="Welcome to Leptos CSR" />
+            <Title text="雅各家網站 - ACP GJCC - Zion Spiritual Flow" />
 
             // Set initial locale from localStorage or browser language
             {move || {

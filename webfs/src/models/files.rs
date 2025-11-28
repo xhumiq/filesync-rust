@@ -123,6 +123,8 @@ pub struct Channel {
     pub source: String,
     pub language: String,
     #[serde(default)]
+    pub copy_lang: String,
+    #[serde(default)]
     pub author: String,
     #[serde(default = "default_generator")]
     pub generator: String,
@@ -152,6 +154,7 @@ impl Default for Channel {
             category: String::new(),
             source: String::new(),
             language: "en-us".to_string(),
+            copy_lang: String::new(),
             author: String::new(),
             generator: "rss_writer".to_string(),
             server_name: "localhost".to_string(),
@@ -166,6 +169,11 @@ impl Default for Channel {
 }
 
 impl Channel {
+
+    pub fn cache_id(&self) -> String {
+        let lang = if self.copy_lang.starts_with("zh") { "zh" } else { "en" };
+        format!("{}/{}", lang, self.name)
+    }
     pub fn read_config(path: &str) -> Result<Config> {
         let file = File::open(path)?;
         let mut config: Config = serde_yaml::from_reader(file)?;
@@ -215,6 +223,9 @@ impl Channel {
                 }
                 if channel.server_name.is_empty() {
                     channel.server_name = config.default.server_name.clone();
+                }
+                if channel.copy_lang.is_empty(){
+                    channel.copy_lang = _lang.clone();
                 }
                 if channel.media_link.is_empty() {
                     let relative = channel.file_path.strip_prefix(&config.default.base_file_path).unwrap_or(&channel.file_path).trim_start_matches('/');
@@ -268,6 +279,34 @@ impl Channel {
         } else {
             entries.into_iter().filter(|e| e.file_name.ends_with(&self.filter_extension)).collect()
         };
+
+        // Deduplicate entries based on normalized_entry_id("zsv")
+        let mut grouped: HashMap<String, Vec<MediaEntry>> = HashMap::new();
+        for entry in files {
+            let id = entry.normalized_entry_id("zsv");
+            grouped.entry(id).or_insert(Vec::new()).push(entry);
+        }
+        let mut deduplicated = Vec::new();
+        for (_id, mut group) in grouped {
+            if group.len() == 1 {
+                deduplicated.push(group.into_iter().next().unwrap());
+            } else {
+                // Check for "correctted" in file_name (case insensitive)
+                let corrected_indices: Vec<usize> = group.iter().enumerate()
+                    .filter(|(_, e)| e.file_name.to_lowercase().contains("correctted"))
+                    .map(|(i, _)| i)
+                    .collect();
+                if corrected_indices.len() == 1 {
+                    deduplicated.push(group.swap_remove(corrected_indices[0]));
+                } else {
+                    // Keep the most recently modified
+                    group.sort_by(|a, b| b.modified.cmp(&a.modified));
+                    deduplicated.push(group.into_iter().next().unwrap());
+                }
+            }
+        }
+        files = deduplicated;
+
         if files.len() > 0 {
             if files[0].link.contains("Pictures") || files[0].link.contains("Photos"){
                 files = Self::sort_photo_entries(files);
@@ -347,8 +386,8 @@ impl Channel {
     }
 
     pub fn write_rss_tofile(&mut self, start_date: NaiveDate, output: &str) -> Result<()> {
-        let channel_name = format!("{}/{}", self.language, self.name);
-        tracing::info!("Writing RSS for channel {} to {}", channel_name, output);
+        let cache_id = self.cache_id();
+        tracing::info!("Writing RSS for channel {} to {}", cache_id, output);
 
         // Create output file and XML writer
         let file = File::create(output).context("Failed to create output file")?;
@@ -502,6 +541,24 @@ impl MediaEntry {
         };
         format!("{}{}-{}", prefix, self.file_date_stamp, event_part)
     }
+
+    pub fn normalized_entry_id(&self, prefix : &str) -> String {
+        let event_part = if RE_ZSV_INDEX_SINGLE.is_match(&self.event) {
+            format!("0{}", &self.event)
+        } else {
+            self.event.to_string()
+        };
+        if self.index.is_empty() {
+            return format!("{}{}-{}", prefix, self.file_date_stamp, event_part)
+        }
+        let index_part = if RE_ZSV_INDEX_SINGLE.is_match(&self.index) {
+            format!("0{}", &self.index)
+        } else {
+            self.index.to_string()
+        };
+        format!("{}{}-{}-{}", prefix, self.file_date_stamp, event_part, index_part)
+    }
+
     pub fn from_entry(entry: std::fs::DirEntry, channel: &Channel) -> std::io::Result<Self> {
         let metadata = entry.metadata()?;
         if !metadata.is_file() {
@@ -621,12 +678,11 @@ impl MediaEntry {
     }
 
     pub fn fill_rss_fields(&mut self, channel: &Channel) {
-        let channel_title = &channel.title;
         if self.title.is_empty(){
             self.title = format!("{} {}", self.format_released_date(), self.construct_title());
         }
         if self.description.is_empty(){
-            self.description = format!("{} {} {}", channel_title, self.format_released_date(), self.construct_description());
+            self.description = self.construct_description();
         }
         if self.link.is_empty(){
             self.link = format!("{}/{}", channel.media_link.trim_end_matches('/'), self.file_name);

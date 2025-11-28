@@ -75,7 +75,7 @@ pub async fn list_files_handler(
             } else {
                 state.config.clone().get_folder_info(lang, &full_path).map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Failed to get folder info"}))))?
             };
-            let cache_id = format!("{}/{}", channel.language, channel.name);
+            let cache_id = channel.cache_id().clone();
 
             // Check cache
             {

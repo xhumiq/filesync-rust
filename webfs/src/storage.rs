@@ -116,7 +116,7 @@ impl Storage {
         {
             let mut table = txn.open_table(CHANNEL_TABLE)?;
             let serialized = bincode::serialize(channel)?;
-            let id = format!("{}/{}", channel.language, channel.name);
+            let id = format!("{}/{}", channel.copy_lang, channel.name);
             table.insert(id.as_str(), serialized)?;
         }
         txn.commit()?;
@@ -144,11 +144,10 @@ impl Storage {
     }
 
     pub fn channel_descriptions(&self, ch: Channel, cache: Arc<Mutex<HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<(Channel, bool)> {
-        let cache_id = format!("{}/{}", ch.language, ch.name);
-        println!("!!! Cache ID: {}", cache_id);
+
         let cached_ch_option = {
             let _cache: std::sync::MutexGuard<'_, HashMap<String, (Channel, chrono::DateTime<Utc>)>> = cache.lock().unwrap();
-            _cache.get(&cache_id).cloned()
+            _cache.get(&ch.cache_id()).cloned()
         };
         let filled_ch = {
             self.fill_descriptions(&ch, &cached_ch_option)
@@ -166,12 +165,12 @@ impl Storage {
 
                 if changed {
                     let mut cache = cache.lock().unwrap();
-                    cache.insert(cache_id.to_string(), (filled_ch.clone(), Utc::now()));
+                    cache.insert(ch.cache_id().to_string(), (filled_ch.clone(), Utc::now()));
                 }
                 Ok((filled_ch, changed))
             }
             Err(e) => {
-                tracing::error!("Error filling descriptions for {}: {}", cache_id, e);
+                tracing::error!("Error filling descriptions for {}: {}", &ch.cache_id(), e);
                 Err(e)
             }
         }
@@ -191,20 +190,20 @@ impl Storage {
             let mut entry = entry.clone();
             let key = entry.normalized_event_id("zsv");
             if let Some(desc) = table.get(key.as_str())?.map(|v| bincode::deserialize::<FileDesc>(v.value().as_slice()).unwrap()) {
-                entry.description = if channel.language == "en" {
-                    if !entry.index.is_empty() {
-                        format!("{} ({})", desc.eng_descr, entry.index)
-                    }else{
-                        desc.eng_descr.clone()
-                    }
-                }else{
+                entry.description = if channel.copy_lang.starts_with("zh") {
                     if !entry.index.is_empty() {
                         format!("{} ({})", desc.chi_descr, entry.index)
                     }else{
                         desc.chi_descr.clone()
                     }
+                }else{
+                    if !entry.index.is_empty() {
+                        format!("{} ({})", desc.eng_descr, entry.index)
+                    }else{
+                        desc.eng_descr.clone()
+                    }
                 };
-            }else if channel.language == "zh" {
+            }else if channel.copy_lang == "zh" {
                 if let Some(cached_entry) = entryMap.get(&key) {
                     entry.description = cached_entry.description.clone();
                 }

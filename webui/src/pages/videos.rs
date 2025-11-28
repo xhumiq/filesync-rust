@@ -218,6 +218,7 @@ pub fn VideoView() -> impl IntoView {
 
         spawn_local(async move {
             let lang_code = crate::get_current_language_code();
+            leptos::logging::log!("lang_code: {}", lang_code);
             match fetch_files(format!("{}/videos-all", lang_code)).await {
                 Ok(ch) => {
                     let mut map = HashMap::new();

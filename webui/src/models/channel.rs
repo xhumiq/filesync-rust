@@ -14,6 +14,8 @@ pub struct Channel {
     pub category: String,
     pub language: String,
     #[serde(default)]
+    pub copy_lang: String,
+    #[serde(default)]
     pub author: String,
     #[serde(default = "default_generator")]
     pub generator: String,
@@ -42,6 +44,7 @@ impl Default for Channel {
             description: String::new(),
             category: String::new(),
             language: "en-us".to_string(),
+            copy_lang: String::new(),
             author: String::new(),
             generator: "rss_writer".to_string(),
             server_name: "localhost".to_string(),
