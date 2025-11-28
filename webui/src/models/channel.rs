@@ -59,19 +59,6 @@ impl Channel {
     /// Returns the first and last publication dates of entries.
     /// The entries vector is sorted by pub_date before extracting dates.
     /// Returns None if there are no entries.
-    pub fn first_and_last_dates(&mut self) -> Option<(NaiveDate, NaiveDate)> {
-        if self.entries.is_empty() {
-            return None;
-        }
-
-        // Sort entries by pub_date
-        self.entries.sort_by(|a, b| a.pub_date.cmp(&b.pub_date));
-
-        let first_date = self.entries.first()?.pub_date.date();
-        let last_date = self.entries.last()?.pub_date.date();
-
-        Some((first_date, last_date))
-    }
 
     pub fn date_range(&self, start: NaiveDate, end: NaiveDate) -> Vec<MediaEntry> {
         self.entries.iter().filter(|entry| {
@@ -84,12 +71,6 @@ impl Channel {
         self.entries.iter().filter(|e| e.pub_date.date() == date).cloned().collect()
     }
 
-    pub fn past_3_days(&self) -> Vec<MediaEntry> {
-        let today = Utc::now().date_naive();
-        let start = today - chrono::Duration::days(2);
-        let end = today + chrono::Duration::days(1);
-        self.date_range(start, end)
-    }
 
     pub fn entries_for_today(&self) -> Vec<MediaEntry> {
         let today = Utc::now().date_naive();
@@ -97,68 +78,6 @@ impl Channel {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::UNIX_EPOCH;
-
-    fn create_test_entry(pub_date: NaiveDate) -> MediaEntry {
-        MediaEntry {
-            guid: "test".to_string(),
-            title: "Test".to_string(),
-            link: "test".to_string(),
-            description: "test".to_string(),
-            content_type: "test".to_string(),
-            file_name: "test".to_string(),
-            file_date_stamp: "test".to_string(),
-            day_night: "test".to_string(),
-            event: "test".to_string(),
-            event_code: "test".to_string(),
-            index: "test".to_string(),
-            event_desc: "test".to_string(),
-            location: "test".to_string(),
-            event_date_stamp: "test".to_string(),
-            media_type: "test".to_string(),
-            mime_type: "test".to_string(),
-            size: 0,
-            pub_date: pub_date.and_hms_opt(0, 0, 0).expect("Invalid test time"),
-            modified: UNIX_EPOCH,
-        }
-    }
-
-    #[test]
-    fn test_first_and_last_dates_empty() {
-        let mut channel = Channel::default();
-        assert_eq!(channel.first_and_last_dates(), None);
-    }
-
-    #[test]
-    fn test_first_and_last_dates_single_entry() {
-        let mut channel = Channel::default();
-        let test_date = NaiveDate::from_ymd_opt(2024, 1, 1).expect("Invalid test date");
-        channel.entries.push(create_test_entry(test_date));
-
-        let result = channel.first_and_last_dates();
-        assert_eq!(result, Some((test_date, test_date)));
-    }
-
-    #[test]
-    fn test_first_and_last_dates_multiple_entries() {
-        let mut channel = Channel::default();
-
-        // Create entries with different dates (out of order)
-        let date1 = NaiveDate::from_ymd_opt(2024, 1, 2).expect("Invalid test date"); // middle
-        let date2 = NaiveDate::from_ymd_opt(2024, 1, 4).expect("Invalid test date"); // latest
-        let date3 = NaiveDate::from_ymd_opt(2024, 1, 1).expect("Invalid test date"); // earliest
-
-        channel.entries.push(create_test_entry(date2)); // latest
-        channel.entries.push(create_test_entry(date1)); // middle
-        channel.entries.push(create_test_entry(date3)); // earliest
-
-        let result = channel.first_and_last_dates();
-        assert_eq!(result, Some((date3, date2))); // Should be sorted: date3 (Jan 1) first, date2 (Jan 4) last
-    }
-}
 
 fn default_generator() -> String {
     "rss_writer".to_string()

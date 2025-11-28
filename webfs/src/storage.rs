@@ -7,6 +7,7 @@ use bincode;
 use chrono::{Utc, DateTime};
 use crate::models::file_desc::FileDesc;
 use crate::models::files::{Channel, MediaEntry};
+use std::sync::{Arc, Mutex};
 
 const CHANNEL_TABLE: TableDefinition<&str, Vec<u8>> = TableDefinition::new("channel");
 const FILENAMES_TABLE: TableDefinition<&str, ()> = TableDefinition::new("filenames");
@@ -140,6 +141,40 @@ impl Storage {
             }
         }
         Ok(entities)
+    }
+
+    pub fn channel_descriptions(&self, ch: Channel, cache: Arc<Mutex<HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<(Channel, bool)> {
+        let cache_id = format!("{}/{}", ch.language, ch.name);
+        println!("!!! Cache ID: {}", cache_id);
+        let cached_ch_option = {
+            let _cache: std::sync::MutexGuard<'_, HashMap<String, (Channel, chrono::DateTime<Utc>)>> = cache.lock().unwrap();
+            _cache.get(&cache_id).cloned()
+        };
+        let filled_ch = {
+            self.fill_descriptions(&ch, &cached_ch_option)
+        };
+        match filled_ch {
+            Ok(filled_ch) => {
+                // Check if channel has changed
+                let changed = if let Some((ref cached_ch, _)) = cached_ch_option {
+                    let current_info: Vec<_> = filled_ch.entries.iter().map(|e| (&e.file_name, &e.description, &e.pub_date)).collect();
+                    let cached_info: Vec<_> = cached_ch.entries.iter().map(|e| (&e.file_name, &e.description, &e.pub_date)).collect();
+                    current_info != cached_info
+                } else {
+                    true
+                };
+
+                if changed {
+                    let mut cache = cache.lock().unwrap();
+                    cache.insert(cache_id.to_string(), (filled_ch.clone(), Utc::now()));
+                }
+                Ok((filled_ch, changed))
+            }
+            Err(e) => {
+                tracing::error!("Error filling descriptions for {}: {}", cache_id, e);
+                Err(e)
+            }
+        }
     }
 
     pub fn fill_descriptions(&self, channel: &Channel, cached_ch: &Option<(Channel, DateTime<Utc>)>) -> Result<Channel> {

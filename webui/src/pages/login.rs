@@ -3,6 +3,7 @@ use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
 use gloo_net::http::Request;
 use serde::Deserialize;
+use crate::i18n::{use_i18n, t, t_string};
 
 fn get_api_login_url() -> String {
     match option_env!("API_LOGIN_URL") { Some(s) => s.to_string(), None => "/auth/v1/login".to_string() }
@@ -103,6 +104,7 @@ async fn refresh_token_request(refresh_token: String) {
 
 #[component]
 pub fn Login() -> impl IntoView {
+    let i18n = use_i18n();
     let (email, set_email) = signal(String::new());
     let (password, set_password) = signal(String::new());
     let (remember_me, set_remember_me) = signal(false);
@@ -135,12 +137,12 @@ pub fn Login() -> impl IntoView {
 
         // Validation
         if email_val.len() < 3 || email_val.len() > 24 {
-            set_error_message.set("Username must be between 3 and 24 characters.".to_string());
+            set_error_message.set(t_string!(i18n, username_validation).to_string());
             return;
         }
 
         if password_val.len() < 5 {
-            set_error_message.set("Password must be at least 5 characters long.".to_string());
+            set_error_message.set(t_string!(i18n, password_validation).to_string());
             return;
         }
 
@@ -194,22 +196,22 @@ pub fn Login() -> impl IntoView {
                                     }
                                     Err(e) => {
                                         leptos::logging::error!("Failed to parse response: {:?}", e);
-                                        set_error_message.set("Invalid response from server.".to_string());
+                                        set_error_message.set(t_string!(i18n, invalid_response).to_string());
                                     }
                                 }
                             } else {
-                                set_error_message.set("Invalid credentials.".to_string());
+                                set_error_message.set(t_string!(i18n, invalid_credentials).to_string());
                             }
                         }
                         Err(e) => {
                             leptos::logging::error!("Network error: {:?}", e);
-                            set_error_message.set("Network error. Please try again.".to_string());
+                            set_error_message.set(t_string!(i18n, network_error).to_string());
                         }
                     }
                 }
                 Err(e) => {
                     leptos::logging::error!("Failed to create request: {:?}", e);
-                    set_error_message.set("Failed to create login request.".to_string());
+                    set_error_message.set(t_string!(i18n, request_error).to_string());
                 }
             }
         });
@@ -224,16 +226,16 @@ pub fn Login() -> impl IntoView {
         <div class="flex items-center justify-center min-h-screen bg-base-200">
             <div class="w-full max-w-md shadow-xl card bg-base-100">
                 <div class="card-body">
-                    <h2 class="mb-2 text-3xl text-center card-title">GJCC File Server</h2>
+                    <h2 class="mb-2 text-3xl text-center card-title">{t!(i18n, login_title)}</h2>
 
                     <form on:submit=on_submit>
                         <div class="form-control">
                             <label class="mb-1 label">
-                                <span class="label-text">Username</span>
+                                <span class="label-text">{t!(i18n, username)}</span>
                             </label>
                             <input
                                 type="text"
-                                placeholder="Enter your username"
+                                placeholder=move || t_string!(i18n, username_placeholder)
                                 class="input input-bordered"
                                 prop:value=email
                                 on:input=move |ev| set_email.set(event_target_value(&ev))
@@ -243,11 +245,11 @@ pub fn Login() -> impl IntoView {
 
                         <div class="form-control">
                             <label class="label">
-                                <span class="label-text">Password</span>
+                                <span class="label-text">{t!(i18n, password)}</span>
                             </label>
                             <input
                                 type="password"
-                                placeholder="Enter your password"
+                                placeholder=move || t_string!(i18n, password_placeholder)
                                 class="input input-bordered"
                                 prop:value=password
                                 on:input=move |ev| set_password.set(event_target_value(&ev))
@@ -257,7 +259,7 @@ pub fn Login() -> impl IntoView {
 
                         <div class="form-control">
                             <label class="cursor-pointer label">
-                                <span class="label-text">Remember me</span>
+                                <span class="label-text">{t!(i18n, remember_me)}</span>
                                 <input
                                     type="checkbox"
                                     class="checkbox"
@@ -281,18 +283,18 @@ pub fn Login() -> impl IntoView {
                         }}
 
                         <div class="mt-6 form-control">
-                            <button type="submit" class="btn btn-primary">Login</button>
+                            <button type="submit" class="btn btn-primary">{t!(i18n, login)}</button>
                         </div>
                     </form>
 
-                    <div class="divider">OR</div>
+                    <div class="divider">{t!(i18n, or)}</div>
 
                     <div class="text-center">
                         <button
                             class="btn btn-link"
                             on:click=on_forgot_password
                         >
-                            Forgot Password?
+                            {t!(i18n, forgot_password)}
                         </button>
                     </div>
                 </div>

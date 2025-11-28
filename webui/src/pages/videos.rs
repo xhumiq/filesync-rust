@@ -17,8 +17,9 @@ fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: Wri
         <div class="w-full">
             <div class="border border-gray-200 rounded-b-lg" style="max-width: 400px;margin: 0 auto;">
                 <div class="flex flex-col justify-center p-4 space-y-2">
-                    <A href="/ui/audio/today" attr:class="w-full btn btn-lg btn-accent">{t!(i18n, today)}</A>
+                    <A href="/ui/videos/today" attr:class="w-full btn btn-lg btn-accent">{t!(i18n, today)}</A>
                     <Calendar available_dates=date_map set_selected_date=set_selected_date />
+                    <A href="/ui/videos/all" attr:class="w-full btn btn-lg btn-accent">{t!(i18n, all)}</A>
                 </div>
             </div>
         </div>
@@ -58,9 +59,21 @@ fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
 
                             let date_header = if Some(entry.pub_date.date()) != curr_date {
                                 curr_date = Some(entry.pub_date.date());
+                                let date_str = if crate::get_current_language_code() == "zh" {
+                                    entry.pub_date.date().format("%Y年%m月%d日 %A").to_string()
+                                        .replace("Monday", "星期一")
+                                        .replace("Tuesday", "星期二")
+                                        .replace("Wednesday", "星期三")
+                                        .replace("Thursday", "星期四")
+                                        .replace("Friday", "星期五")
+                                        .replace("Saturday", "星期六")
+                                        .replace("Sunday", "星期日")
+                                } else {
+                                    entry.pub_date.date().format("%A, %B %e, %Y").to_string()
+                                };
                                 Some(view! {
                                     <div class="flex items-center justify-between py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b" style="padding-left: 15px;">
-                                        <span>{entry.pub_date.date().format("%A, %B %e, %Y").to_string()}</span>
+                                        <span>{date_str}</span>
                                         <div class="flex items-center gap-2">
                                             {if entry.pub_date.date() == first_date {
                                                 view! {
@@ -92,28 +105,33 @@ fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
 
                             let event_header = if Some(entry.event.clone()) != curr_event {
                                 curr_event = Some(entry.event.clone());
+                                let mut descr = entry.description.clone();
+                                if descr.is_empty() {
+                                    descr = entry.event_desc.clone();
+                                }
                                 Some(view! {
                                     <h4 class="px-4 py-1 font-semibold text-gray-700 bg-gray-100 border-b text-md">
-                                        <span class="mr-2">{entry.pub_date.date().format("%m.%d").to_string()}</span><span class="mr-2">{entry.event}</span><span class="mr-2">{entry.event_desc}</span>
+                                        <span class="mr-2">{entry.pub_date.date().format("%m.%d").to_string()}</span><span class="mr-2">{entry.event}</span><span class="mr-2">{descr}</span>
                                     </h4>
                                 })
                             } else {
                                 None
                             };
-
+                            let fname = entry.file_name.clone();
+                            let fname_for_href = fname.clone();
                             view! {
                                 <>
                                     {date_header}
                                     {event_header}
-                                    <div class={format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)}>
+                                    <a href=format!("{}/Video/{}", get_api_file_listing_url(), fname_for_href.as_str()) onclick="event.stopPropagation(); return true;" class=format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)>
                                         <div class="flex items-center flex-1 min-w-0">
-                                            <span style="margin-left: 15px;margin-right: 10px;">{film_icon()}</span>
-                                            <span class="truncate">{entry.file_name}</span>
+                                            <span style="margin-left: 15px;margin-right: 0.6rem;">{film_icon()}</span>
+                                            <span class="truncate">{fname}</span>
                                         </div>
                                         <div class="w-24 text-sm text-right text-gray-600">
                                             {size_text}
                                         </div>
-                                    </div>
+                                    </a>
                                 </>
                             }
                         }).collect_view().into_any()
@@ -125,9 +143,21 @@ fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                     if !entries.is_empty() {
                         let entry = &entries[0];
                         let today = Utc::now().date_naive();
+                        let date_str = if crate::get_current_language_code() == "zh" {
+                            entry.pub_date.date().format("%Y年%m月%d日 %A").to_string()
+                                .replace("Monday", "星期一")
+                                .replace("Tuesday", "星期二")
+                                .replace("Wednesday", "星期三")
+                                .replace("Thursday", "星期四")
+                                .replace("Friday", "星期五")
+                                .replace("Saturday", "星期六")
+                                .replace("Sunday", "星期日")
+                        } else {
+                            entry.pub_date.date().format("%A, %B %e, %Y").to_string()
+                        };
                         Some(view! {
                             <div class="flex items-center justify-between py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b" style="padding-left: 15px;">
-                                <span>{entry.pub_date.date().format("%A, %B %e, %Y").to_string()}</span>
+                                <span>{date_str}</span>
                                 <div class="flex items-center gap-2">
                                     <A href=format!("/ui/videos/{}", prev_date.format("%y%m%d")) attr:class="btn btn-sm btn-ghost">
                                         {t!(i18n, previous_day)}
@@ -187,7 +217,8 @@ pub fn VideoView() -> impl IntoView {
         set_error.set(String::new());
 
         spawn_local(async move {
-            match fetch_files("zh/videos-all".to_string()).await {
+            let lang_code = crate::get_current_language_code();
+            match fetch_files(format!("{}/videos-all", lang_code)).await {
                 Ok(ch) => {
                     let mut map = HashMap::new();
                     for entry in &ch.entries {
@@ -228,7 +259,10 @@ pub fn VideoView() -> impl IntoView {
             if p == "date" {
                 // Create date map
                 set_entries.set(Vec::new());
-            } else {
+            } else if p == "all" {
+                // Create date map
+                set_entries.set(ch.entries.clone());
+            } else{
                 let ents = if p == "today" {
                     ch.entries_for_today()
                 } else if p.ends_with("days") {
@@ -336,8 +370,8 @@ pub fn VideoView() -> impl IntoView {
                                 menu_view(date_map.get(), set_selected_date)
                             }
                         }else{
-                            let next_date = entries[entries.len()-1].pub_date.date() + chrono::Duration::days(1);
-                            let today = Utc::now().date_naive();
+                            let _next_date = entries[entries.len()-1].pub_date.date() + chrono::Duration::days(1);
+                            let _today = Utc::now().date_naive();
                             view!{
                                 <>
                                     <div class="flex justify-center mb-4">

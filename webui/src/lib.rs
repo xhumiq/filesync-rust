@@ -20,6 +20,33 @@ use crate::pages::home::Home;
 use crate::pages::login::Login;
 use crate::pages::not_found::NotFound;
 
+/// Get the current language code from localStorage or browser language
+pub fn get_current_language_code() -> String {
+    if let Some(window) = web_sys::window() {
+        // First check localStorage
+        if let Ok(Some(storage)) = window.local_storage() {
+            if let Ok(Some(locale_str)) = storage.get_item("locale") {
+                return locale_str;
+            }
+        }
+
+        // Fall back to browser language
+        match window.navigator().language() {
+            Some(lang) => {
+                if lang.starts_with("zh") {
+                    return "zh".to_string();
+                } else if lang.starts_with("fr") {
+                    return "fr".to_string();
+                }
+            }
+            None => {}
+        }
+    }
+
+    // Default to English
+    "en".to_string()
+}
+
 /// An app router which renders the homepage and handles 404's
 #[component]
 pub fn App() -> impl IntoView {
@@ -37,10 +64,6 @@ pub fn App() -> impl IntoView {
 
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
-    
-        // .initial_locale(Locale::En)  // Optional: Set default locale
-        // For SSR: Add custom locale getter from headers if needed
-        // .locale_getter(|req| { /* Extract from Accept-Language */ });
 
     view! {
         <I18nContextProvider>
@@ -48,6 +71,50 @@ pub fn App() -> impl IntoView {
 
             // sets the document title
             <Title text="Welcome to Leptos CSR" />
+
+            // Set initial locale from localStorage or browser language
+            {move || {
+                let i18n = use_i18n();
+                if let Some(window) = web_sys::window() {
+                    // First check localStorage
+                    let mut locale = if let Ok(Some(storage)) = window.local_storage() {
+                        if let Ok(Some(locale_str)) = storage.get_item("locale") {
+                            match locale_str.as_str() {
+                                "zh" => Some(Locale::zh),
+                                "en" => Some(Locale::en),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    // If not in localStorage, check browser language
+                    if locale.is_none() {
+                        match window.navigator().language() {
+                            Some(lang) => {
+                                if lang.starts_with("zh") {
+                                    locale = Some(Locale::zh);
+                                } else if lang.starts_with("fr") {
+                                    locale = Some(Locale::fr);
+                                } else {
+                                    locale = Some(Locale::en);
+                                }
+                            }
+                            None => {
+                                locale = Some(Locale::en);
+                            }
+                        }
+                    }
+
+                    // Set the locale
+                    if let Some(loc) = locale {
+                        i18n.set_locale(loc);
+                    }
+                }
+            }}
 
             // injects metadata in the <head> of the page
             <Meta charset="UTF-8" />

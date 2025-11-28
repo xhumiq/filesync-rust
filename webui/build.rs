@@ -4,9 +4,19 @@ use std::env;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
     println!("Regular debug message - visible with cargo build -v");
+    
+    // Check for ENV_PROFILE environment variable
     if let Ok(profile_file) = env::var("ENV_PROFILE") {
+        println!("cargo:warning=Loading profile: {}", profile_file);
         println!("cargo:rerun-if-changed={}", profile_file);
-        dotenvy::from_path(profile_file).ok();
+        dotenvy::from_path(&profile_file).ok();
+    }
+    
+    // Also check for CARGO_ENV_PROFILE (passed through cargo)
+    if let Ok(profile_file) = env::var("CARGO_ENV_PROFILE") {
+        println!("cargo:warning=Loading cargo profile: {}", profile_file);
+        println!("cargo:rerun-if-changed={}", profile_file);
+        dotenvy::from_path(&profile_file).ok();
     }
     let vars_to_export = [
         "API_FILE_LISTING_URL",
@@ -42,10 +52,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs");
     println!("cargo:rerun-if-env-changed=PROFILE");
+    println!("cargo:rerun-if-env-changed=ENV_PROFILE");
+    println!("cargo:rerun-if-env-changed=CARGO_ENV_PROFILE");
     println!("cargo:rerun-if-changed=.env");
     println!("cargo:rerun-if-changed=.env.local");
     println!("cargo:rerun-if-changed=.env.development");
     println!("cargo:rerun-if-changed=.env.production");
     println!("cargo:rerun-if-changed=.env.staging");
+    println!("cargo:rerun-if-changed=locales");
     Ok(())
 }

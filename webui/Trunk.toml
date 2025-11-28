@@ -27,6 +27,10 @@ inject_scripts = true
 # cargo_profile = "release-trunk"
 jobs = 8
 
+# Environment variables to pass to cargo build
+[build.cargo_args]
+env = []
+
 [watch]
 # Paths to watch. The `build.target`'s parent folder is watched by default.
 watch = []

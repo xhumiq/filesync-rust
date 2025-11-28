@@ -148,14 +148,22 @@ pub fn normalize_location(loc: &str) -> String {
     }
 }
 
-pub fn parse_mime_type(filename: &str) -> Option<String> {
+pub fn parse_mime_type(filename: &str) -> String {
+    if let Some(mtype) = _parse_mime_type(filename) {
+        return mtype;
+    }else{
+        return "application/octet-stream".to_string();
+    }
+}
+
+pub fn _parse_mime_type(filename: &str) -> Option<String> {
     let path = std::path::Path::new(filename);
     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
     MIME_TYPE_MAP.get(ext.as_str()).map(|s| s.to_string())
 }
 
 pub fn parse_media_type(filename: &str) -> String {
-    if let Some(mime) = parse_mime_type(filename) {
+    if let Some(mime) = _parse_mime_type(filename) {
         parse_media_type_from_mime(&mime)
     } else {
         "unknown".to_string()
@@ -163,6 +171,9 @@ pub fn parse_media_type(filename: &str) -> String {
 }
 
 pub fn parse_media_type_from_mime(mime_type: &str) -> String {
+    if mime_type == "application/octet-stream" {
+        return "unknown".to_string();
+    }
     MEDIA_TYPE_MAP.get(mime_type)
         .map(|s| s.to_string())
         .unwrap_or_else(|| {

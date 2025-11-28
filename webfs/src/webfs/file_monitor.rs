@@ -1,23 +1,19 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{NaiveDate, Utc};
 use regex::Regex;
 use std::collections::HashSet;
 use std::fs;
-use std::fs::File;
-use std::io::BufWriter;
 use std::path::Path;
 use std::time::Duration;
 use tokio::time;
 use tokio::sync::mpsc;
 use tracing;
 use lazy_static::lazy_static;
-use quick_xml::Writer;
 
 use docx_rs::{DocumentChild, TableCell};
 use crate::models::{file_desc::FileDesc, files::{Config, Channel}};
 use crate::storage::Storage;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 pub struct MonitorConfig{
@@ -66,7 +62,7 @@ pub async fn start_file_monitor(config: &MonitorConfig, storage: Arc<Mutex<Stora
         let cache_clone = cache.clone();
         let storage_clone = storage.clone();
         tokio::spawn(async move {
-            fill_description(rx1, storage_clone, cache_clone, tx2).await;
+            fill_descriptions(rx1, storage_clone, cache_clone, tx2).await;
         });
         tokio::spawn(async move {
             rss_writer(rx2, start_date).await;
@@ -101,63 +97,22 @@ async fn fill_and_queue_channels(channels_to_process: &[(String, Channel)], tx: 
     Ok(())
 }
 
-async fn fill_description(mut rx: mpsc::Receiver<(String, Channel)>, storage: Arc<Mutex<Storage>>, cache: Arc<Mutex<HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>, tx: mpsc::Sender<(String, Channel)>) {
+async fn fill_descriptions(mut rx: mpsc::Receiver<(String, Channel)>, storage: Arc<Mutex<Storage>>, cache: Arc<Mutex<HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>, tx: mpsc::Sender<(String, Channel)>) {
     while let Some((cache_id, ch)) = rx.recv().await {
-        //let cache_id = format!("{}/{}", ch.language, channel_name);
-        let cached_ch_option = {
-            let _cache: std::sync::MutexGuard<'_, HashMap<String, (Channel, chrono::DateTime<Utc>)>> = cache.lock().unwrap();
-            _cache.get(&cache_id).cloned()
-        };
-        let filled_ch = {
+        let result = {
             let storage = storage.lock().unwrap();
-            storage.fill_descriptions(&ch, &cached_ch_option)
+            storage.channel_descriptions(ch, cache.clone())
         };
-        match filled_ch {
-            Ok(filled_ch) => {
-                // Check if channel has changed
-                let should_send = if let Some((ref cached_ch, _)) = cached_ch_option {
-                    let current_info: Vec<_> = filled_ch.entries.iter().map(|e| (&e.file_name, &e.description, &e.pub_date)).collect();
-                    let cached_info: Vec<_> = cached_ch.entries.iter().map(|e| (&e.file_name, &e.description, &e.pub_date)).collect();
-                    current_info != cached_info
-                } else {
-                    true
-                };
-
-                if should_send {
-                    // Cache the channel
-                    {
-                        let mut cache = cache.lock().unwrap();
-                        cache.insert(cache_id.to_string(), (filled_ch.clone(), Utc::now()));
-                    }
-                    // Log changes
-                    {
-                        if let Some((cached_ch, _)) = cached_ch_option {
-                            let current_map: std::collections::HashMap<_, _> = filled_ch.entries.iter().map(|e| (&e.file_name, &e.description)).collect();
-                            let cached_map: std::collections::HashMap<_, _> = cached_ch.entries.iter().map(|e| (&e.file_name, &e.description)).collect();
-                            for (fname, desc) in &current_map {
-                                if let Some(cached_desc) = cached_map.get(fname) {
-                                    if desc != cached_desc {
-                                        tracing::info!("Entry {} description changed: '{}' -> '{}'", fname, cached_desc, desc);
-                                    }
-                                } else {
-                                    tracing::info!("New entry: {}", fname);
-                                }
-                            }
-                            for fname in cached_map.keys() {
-                                if !current_map.contains_key(fname) {
-                                    tracing::info!("Removed entry: {}", fname);
-                                }
-                            }
-                        }
-                    }
-                    // Send to queue
+        match result {
+            Ok((filled_ch, changed)) => {
+                if changed {
                     if let Err(e) = tx.send((cache_id.clone(), filled_ch)).await {
                         tracing::error!("Failed to send channel {} to queue: {}", cache_id, e);
                     }
                 }
-            }
+            },
             Err(e) => {
-                tracing::error!("Error filling descriptions for {}: {}", cache_id, e);
+                tracing::error!("Error filling description for channel {}: {}", cache_id, e);
             }
         }
     }
@@ -165,27 +120,11 @@ async fn fill_description(mut rx: mpsc::Receiver<(String, Channel)>, storage: Ar
 
 async fn rss_writer(mut rx: mpsc::Receiver<(String, Channel)>, start_date: NaiveDate) {
     while let Some((channel_name, mut ch)) = rx.recv().await {
-        if let Err(e) = write_single_rss(&channel_name, &mut ch, start_date) {
+        let output_path = &ch.output_path.clone();
+        if let Err(e) = ch.write_rss_tofile(start_date, output_path) {
             tracing::error!("Error writing RSS for {}: {}", channel_name, e);
         }
     }
-}
-
-fn write_single_rss(channel_name: &str, ch: &mut Channel, start_date: NaiveDate) -> Result<()> {
-    let output_path = ch.output_path.clone();
-
-    tracing::info!("Writing RSS for channel {} to {}", channel_name, output_path);
-
-    // Create output file and XML writer
-    let file = File::create(&output_path).context("Failed to create output file")?;
-    let buf_writer = BufWriter::new(file);
-    let mut writer = Writer::new(buf_writer);
-
-    // Write RSS
-    ch.write_rss(&mut writer, Some(start_date))?;
-
-    tracing::info!("RSS feed written to {} with {} entries", output_path, ch.entries.len());
-    Ok(())
 }
 
 async fn scan_and_store(storage: &Arc<Mutex<Storage>>, scan_path: &str, regex: &Regex) -> Result<()> {

@@ -17,7 +17,7 @@ urlencoding = "2.1"
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-web-sys = { version = "0.3.70", features = ["Document", "Window", "HtmlDocument", "Storage", "console", "Location", "ScrollIntoViewOptions", "ScrollLogicalPosition", "Element", "HtmlElement", "ScrollBehavior"] }
+web-sys = { version = "0.3.70", features = ["Document", "Window", "HtmlDocument", "Storage", "console", "Location", "ScrollIntoViewOptions", "ScrollLogicalPosition", "Element", "HtmlElement", "ScrollBehavior", "Navigator"] }
 gloo-net = "0.6"
 gloo = "0.10"
 serde = { version = "1.0", features = ["derive"] }
@@ -40,7 +40,7 @@ dotenvy = "0.15.7"
 
 [package.metadata.leptos-i18n]
 default = "en"
-locales = ["en", "zh"]
+locales = ["en", "zh", "fr"]
 
 [dev-dependencies]
 wasm-bindgen = "0.2"

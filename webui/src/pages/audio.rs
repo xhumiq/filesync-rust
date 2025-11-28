@@ -7,38 +7,13 @@ use crate::icons::*;
 use crate::models::channel::{Channel, MediaEntry};
 use crate::components::main_top_nav::MainTopNav;
 use crate::components::calendar::Calendar;
-use chrono::{NaiveDate, Utc, Duration, Datelike};
+use chrono::{NaiveDate, Utc};
 use std::collections::HashMap;
 use gloo::utils::document;
 use gloo::timers::callback::Timeout;
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
 use crate::i18n::{use_i18n, t};
 
-fn compute_weeks(entries: &[MediaEntry]) -> Vec<(NaiveDate, NaiveDate)> {
-    let mut weeks = Vec::new();
-    if entries.is_empty() {
-        return weeks;
-    }
-    let mut sorted_dates: Vec<NaiveDate> = entries.iter().map(|e| e.pub_date.date()).collect();
-    sorted_dates.sort();
-    sorted_dates.dedup();
-    let mut current_week_start = None;
-    for &date in &sorted_dates {
-        let week_start = date - Duration::days(date.weekday().num_days_from_monday() as i64);
-        if current_week_start != Some(week_start) {
-            if let Some(start) = current_week_start {
-                let end = start + chrono::Duration::days(6);
-                weeks.push((start, end));
-            }
-            current_week_start = Some(week_start);
-        }
-    }
-    if let Some(start) = current_week_start {
-        let end = start + Duration::days(6);
-        weeks.push((start, end));
-    }
-    weeks
-}
 
  fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: WriteSignal<Option<NaiveDate>>) -> AnyView {
     let i18n = use_i18n();
@@ -48,6 +23,7 @@ fn compute_weeks(entries: &[MediaEntry]) -> Vec<(NaiveDate, NaiveDate)> {
                 <div class="flex flex-col justify-center p-4 space-y-2">
                     <A href="/ui/audio/this_week" attr:class="w-full btn btn-lg btn-accent">{t!(i18n, this_week)}</A>
                     <Calendar available_dates=date_map set_selected_date=set_selected_date />
+                    <A href="/ui/audio/all" attr:class="w-full btn btn-lg btn-accent">{t!(i18n, all)}</A>
                 </div>
             </div>
         </div>
@@ -81,19 +57,30 @@ fn audio_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                     } else {
                         let today = Utc::now().date_naive();
                         let mut curr_date = None::<NaiveDate>;
-                        let mut curr_event = None::<String>;
+                        let mut _curr_event = None::<String>;
                         entries_clone.iter().enumerate().map(|(index, entry)| {
                             let entry = entry.clone();
                             let size_text = format_size(entry.size);
                             let bg_class = if index % 2 == 0 { "bg-white" } else { "bg-gray-50" };
-
                             let date_header = if Some(entry.pub_date.date()) != curr_date {
                                 curr_date = Some(entry.pub_date.date());
+                                let date_str = if crate::get_current_language_code() == "zh" {
+                                    entry.pub_date.date().format("%Y年%m月%d日 %A").to_string()
+                                        .replace("Monday", "星期一")
+                                        .replace("Tuesday", "星期二")
+                                        .replace("Wednesday", "星期三")
+                                        .replace("Thursday", "星期四")
+                                        .replace("Friday", "星期五")
+                                        .replace("Saturday", "星期六")
+                                        .replace("Sunday", "星期日")
+                                } else {
+                                    entry.pub_date.date().format("%A, %B %e, %Y").to_string()
+                                };
                                 Some(view! {
                                     <div id={format!("date-{}", entry.pub_date.date().format("%Y%m%d"))} class="flex items-center justify-between px-4 py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b">
-                                        <span>{entry.pub_date.date().format("%A, %B %e, %Y").to_string()}</span>
+                                        <span>{date_str}</span>
                                         <div class="flex items-center gap-2">
-                                            {if (entry.pub_date.date() == first_date || entry.pub_date.date() == last_date) {
+                                            {if entry.pub_date.date() == first_date || entry.pub_date.date() == last_date {
                                                 view! {
                                                     <A href=format!("/ui/audio/{}", prev_date.format("%y%m%d")) attr:class="btn btn-sm btn-ghost">
                                                         {t!(i18n, past_week)}
@@ -121,18 +108,28 @@ fn audio_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                                 None
                             };
 
+                            let fname = entry.file_name.clone();
+                            let fname_for_href = fname.clone();
+                            let media_link = entry.link.clone();
                             view! {
                                 <>
                                     {date_header}
-                                    <A href=format!("http://localhost:3000/fs/v1/Music/ZSF/Chinese/{}", entry.file_name) attr:class=format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)>
+                                    <a href=format!("{}", media_link) onclick="event.stopPropagation(); return true;" class=format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)>
                                         <div class="flex items-center flex-1 min-w-0">
-                                            <span style="margin-left: 15px;margin-right: 10px;">{audio_icon()}</span>
-                                            <span class="truncate">{entry.file_name}</span>
+                                            <span style="margin-left: 15px;margin-right: 0.6rem;">{audio_icon()}</span>
+                                            <span class="truncate" style="min-width: 10rem;margin-right: 0.5rem;">{fname}</span>
+                                            <span class="truncate">{entry.description}</span>
                                         </div>
-                                        <div class="w-24 text-sm text-right text-gray-600">
-                                            {size_text}
+                                        <div class="text-sm text-right text-gray-600" style="min-width: 8rem;">
+                                            <span class="truncate" style="display: inline-block;min-width: 4rem;padding-right: 0.5rem;">{size_text}</span>
+                                            <A href=format!("{}/Audio/chinese/{}", get_api_file_listing_url(), fname_for_href.as_str()) attr:class="btn btn-sm btn-ghost" attr:style="padding:0;width:2rem;">
+                                                {chinese_icon()}
+                                            </A>
+                                            <A href=format!("{}/Audio/english/{}", get_api_file_listing_url(), fname_for_href.as_str()) attr:class="btn btn-sm btn-ghost" attr:style="padding:0;width:2rem;">
+                                                {english_icon()}
+                                            </A>
                                         </div>
-                                    </A>
+                                    </a>
                                 </>
                             }
                         }).collect_view().into_any()
@@ -168,14 +165,15 @@ pub fn AudioView() -> impl IntoView {
     let (_date_range, set_date_range) = signal(Option::<(NaiveDate, NaiveDate)>::None);
 
     /* ----------------------------------------------------------- */
-    /*  Effect: fetch the channel                                   */
+    /*  Effect: fetch the channel                                  */
     /* ----------------------------------------------------------- */
     Effect::new(move |_| {
         set_loading.set(true);
         set_error.set(String::new());
 
         spawn_local(async move {
-            match fetch_files("zh/audio-chi".to_string()).await {
+            let lang_code = crate::get_current_language_code();
+            match fetch_files(format!("{}/audio-chi", lang_code)).await {
                 Ok(ch) => {
                     let mut map = HashMap::new();
                     for entry in &ch.entries {
@@ -231,6 +229,8 @@ pub fn AudioView() -> impl IntoView {
                     } else {
                         Vec::new()
                     }
+                } else if p == "all" {
+                    ch.entries.clone()
                 } else if p.len() == 6 && p.chars().all(|c| c.is_digit(10)) {
                     if let Ok(mut date) = NaiveDate::parse_from_str(&p, "%y%m%d") {
                         let mut start = date;

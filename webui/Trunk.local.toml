@@ -1,0 +1,16 @@
+[build]
+target = "index.html"
+release = false
+dist = "dist"
+public_url = "/"
+filehash = true
+inject_scripts = true
+jobs = 8
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 3030
+open = false
+
+[env]
+ENV_PROFILE = ".env.local"

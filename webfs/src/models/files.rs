@@ -1,12 +1,13 @@
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::io::BufWriter;
 use regex::Regex;
 use lazy_static::lazy_static;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
 use chrono::{DateTime, Utc, Local, NaiveDate, NaiveDateTime};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tracing;
 
@@ -344,6 +345,24 @@ impl Channel {
         }
         files
     }
+
+    pub fn write_rss_tofile(&mut self, start_date: NaiveDate, output: &str) -> Result<()> {
+        let channel_name = format!("{}/{}", self.language, self.name);
+        tracing::info!("Writing RSS for channel {} to {}", channel_name, output);
+
+        // Create output file and XML writer
+        let file = File::create(output).context("Failed to create output file")?;
+        let buf_writer = BufWriter::new(file);
+        let mut writer = Writer::new(buf_writer);
+
+        // Write RSS
+        self.write_rss(&mut writer, Some(start_date))?;
+
+        tracing::info!("RSS feed written to {} with {} entries", output, self.entries.len());
+        Ok(())
+    }
+
+
 
     pub fn write_rss<W: std::io::Write>(&mut self, writer: &mut Writer<W>, start_date: Option<NaiveDate>) -> Result<()> {
 
@@ -689,10 +708,11 @@ fn parse_photo_archive_name(filename: &str) -> MediaEntry {
 fn parse_file_name(filename: &str) -> MediaEntry {
     let base = std::path::Path::new(filename).file_name().unwrap_or_default().to_string_lossy().to_string();
     let mut fi = MediaEntry {
-        media_type: super::formatter::parse_media_type(filename),
+        mime_type: super::formatter::parse_mime_type(filename),
         file_name: base.to_string(),
         ..Default::default()
     };
+    fi.media_type = super::formatter::parse_media_type_from_mime(&fi.mime_type);
     if (filename.contains("/Pictures/") || filename.contains("/Photos/")) && fi.file_name.ends_with(".zip") {
         let me = parse_photo_archive_name(filename);
         if !me.location.is_empty() {

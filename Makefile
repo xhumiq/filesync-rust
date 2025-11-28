@@ -4,7 +4,7 @@ APP_PROJ_NAME := ${proj}
 ifeq ("${APP_PROJ_NAME}", "")
 override APP_PROJ_NAME := webui
 endif
-PACKAGE_FOLDER := "/ntc/packages/filesync/${APP_PROJ_NAME}"
+PACKAGE_FOLDER := /ntc/packages/filesync/${APP_PROJ_NAME}
 BUILD_PATH := ${ROOT_DIR}/${APP_PROJ_NAME}/target/release
 S3_URL := https://us-lax-1.linodeobjects.com
 S3_DEPLOY_PATH := s3://deploy/packages
@@ -17,14 +17,15 @@ dep-ui:
 
 deploy-ui:
 	cd webui \
-	&& ${MAKE} release \
-	&& mkdir -p ${PACKAGE_FOLDER} \
-	&& rm -f ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst \
-	&& rm -f ${PACKAGE_FOLDER}/webui-latest.tar.zst \
-	&& tar -I zstd -cvf ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst dist \
-	&& cp ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst ${PACKAGE_FOLDER}/webui-latest.tar.zst \
-	&& ls -al ${PACKAGE_FOLDER} \
-	&& s5cmd --endpoint-url ${S3_URL} \
+	&& ${MAKE} release
+	mkdir -p ${PACKAGE_FOLDER}
+	rm -f ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst
+	rm -f ${PACKAGE_FOLDER}/webui-latest.tar.zst
+	cd webui/dist \
+	&& tar -I zstd -cvf ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst release
+	cp ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst ${PACKAGE_FOLDER}/webui-latest.tar.zst
+	ls -al ${PACKAGE_FOLDER}
+	s5cmd --endpoint-url ${S3_URL} \
 		--profile deploy \
 		--credentials-file ${HOME}/.config/cloud-cli/.linode \
 		cp ${PACKAGE_FOLDER}/webui-latest.tar.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-v${BUILD_VER}.zst

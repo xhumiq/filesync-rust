@@ -91,13 +91,18 @@ pub async fn list_files_handler(
             let entries = Channel::read_dir(&channel).map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Failed to read directory"}))))?;
             let mut channel = channel;
             channel.set_entries(entries);
-            // Cache the result
-            {
-                let mut cache = state.channel_cache.lock().unwrap();
-                cache.insert(cache_id.to_string(), (channel.clone(), Utc::now()));
-            }
 
-            return Ok(Json(channel).into_response());
+            let storage = state.storage.lock().unwrap();
+            
+            match storage.channel_descriptions(channel, state.channel_cache.clone()){
+                Ok((ch, _changed)) => {
+                    return Ok(Json(ch).into_response());
+                }
+                Err(e) => {
+                    tracing::error!("Error filling descriptions for {}: {}", cache_id, e);
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))));        
+                }
+            }
         } else {
             return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid request"}))));
         }
