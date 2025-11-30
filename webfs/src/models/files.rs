@@ -520,11 +520,12 @@ impl MediaEntry {
             ..Default::default()
         }
     }
-    pub fn new_folder(full_path: String, name: String, modified: std::time::SystemTime) -> MediaEntry {
+    pub fn new_folder(full_path: &str, name: &str, modified: std::time::SystemTime) -> MediaEntry {
         MediaEntry {
-            guid: full_path.clone(),
-            title: name,
-            link: full_path.clone(),
+            guid: full_path.to_string(),
+            title: name.to_string(),
+            link: full_path.to_string(),
+            file_name: name.to_string(),
             modified,
             content_type: "folder".to_string(),
             ..Default::default()
@@ -543,6 +544,9 @@ impl MediaEntry {
     }
 
     pub fn normalized_entry_id(&self, prefix : &str) -> String {
+        if self.content_type == "folder" {
+            return self.guid.clone();
+        }
         let event_part = if RE_ZSV_INDEX_SINGLE.is_match(&self.event) {
             format!("0{}", &self.event)
         } else {
@@ -564,8 +568,7 @@ impl MediaEntry {
         if !metadata.is_file() {
             if metadata.is_dir() && channel.source == "explorer" {
                 let fname = entry.file_name().to_string_lossy().to_string();
-                let folder = MediaEntry::new_folder(entry.path().to_string_lossy().to_string(), fname, metadata.modified()?);
-                println!("Folder: {}", folder.guid);
+                let folder = MediaEntry::new_folder(&entry.path().to_string_lossy(), &fname, metadata.modified()?);
                 return Ok(folder);
             }
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "not a file"));
