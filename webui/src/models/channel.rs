@@ -1,4 +1,5 @@
 use chrono::{NaiveDate, NaiveDateTime, Utc};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Channel {
@@ -133,4 +134,14 @@ impl Default for MediaEntry {
             modified: std::time::UNIX_EPOCH,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FolderShare {
+    #[serde(default)]
+    pub name: String,
+    pub title: HashMap<String, String>,
+    pub link: String,
+    pub base_file_path: String,
+    pub group: String,
 }

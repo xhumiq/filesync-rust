@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use gloo::utils::document;
 use gloo::timers::callback::Timeout;
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
-use crate::i18n::{use_i18n, t};
-
+use crate::i18n::{use_i18n, t, Locale};
+use crate::langs::{get_locale, format_date};
 
  fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: WriteSignal<Option<NaiveDate>>) -> AnyView {
     let i18n = use_i18n();
@@ -31,17 +31,15 @@ use crate::i18n::{use_i18n, t};
 }
 
 fn audio_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
-    let i18n = use_i18n();
+    let (i18n, locale) = get_locale();
     // Sort entries by pub_date, then by event
     entries.sort_by(|a, b| {
         a.pub_date.date().cmp(&b.pub_date.date()).then(a.event.cmp(&b.event))
     });
-
     let first_date = entries[0].pub_date.date();
     let prev_date = first_date - chrono::Duration::days(7);
     let last_date = entries[entries.len()-1].pub_date.date();
     let next_date = last_date + chrono::Duration::days(1);
-
     view! {
         <div id="segmented-list" class="w-full">
             <div class="border border-gray-200 rounded-b-lg">
@@ -57,25 +55,14 @@ fn audio_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                     } else {
                         let today = Utc::now().date_naive();
                         let mut curr_date = None::<NaiveDate>;
-                        let mut _curr_event = None::<String>;
+                        let mut curr_event = None::<String>;
                         entries_clone.iter().enumerate().map(|(index, entry)| {
                             let entry = entry.clone();
                             let size_text = format_size(entry.size);
                             let bg_class = if index % 2 == 0 { "bg-white" } else { "bg-gray-50" };
                             let date_header = if Some(entry.pub_date.date()) != curr_date {
                                 curr_date = Some(entry.pub_date.date());
-                                let date_str = if crate::get_current_language_code() == "zh" {
-                                    entry.pub_date.date().format("%Y年%m月%d日 %A").to_string()
-                                        .replace("Monday", "星期一")
-                                        .replace("Tuesday", "星期二")
-                                        .replace("Wednesday", "星期三")
-                                        .replace("Thursday", "星期四")
-                                        .replace("Friday", "星期五")
-                                        .replace("Saturday", "星期六")
-                                        .replace("Sunday", "星期日")
-                                } else {
-                                    entry.pub_date.date().format("%A, %B %e, %Y").to_string()
-                                };
+                                let date_str = format_date(locale, &entry.pub_date.date());
                                 Some(view! {
                                     <div id={format!("date-{}", entry.pub_date.date().format("%Y%m%d"))} class="flex items-center justify-between px-4 py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b">
                                         <span>{date_str}</span>
@@ -145,10 +132,13 @@ fn audio_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
 /* --------------------------------------------------------------- */
 #[component]
 pub fn AudioView() -> impl IntoView {
-    let i18n = use_i18n();
+    let (i18n, mut locale) = get_locale();
+    if locale == Locale::fr {
+        locale = Locale::en;
+    }
     let navigate = use_navigate();
-    let navigate_for_fetch = navigate.clone();
     let navigate_for_effect = navigate.clone();
+    let navigate_for_fetch = navigate.clone();
     let _navigate_for_view = navigate.clone();
     let params = leptos_router::hooks::use_params_map();
     let path = move || {
@@ -174,8 +164,7 @@ pub fn AudioView() -> impl IntoView {
         let nav = navigate_for_fetch.clone();
 
         spawn_local(async move {
-            let lang_code = crate::get_current_language_code();
-            match fetch_files(format!("{}/audio-chi", lang_code)).await {
+            match fetch_files(format!("{}/audio-chi", locale.to_string())).await {
                 Ok(ch) => {
                     let mut map = HashMap::new();
                     for entry in &ch.entries {

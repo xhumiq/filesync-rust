@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, fmt::MakeWriter};
+use models::auth::SigningKeys;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,6 +23,7 @@ pub struct AppState {
     pub config: models::files::Config,
     pub channel_cache: Arc<Mutex<HashMap<String, (models::files::Channel, DateTime<Utc>)>>>,
     pub storage: Arc<Mutex<storage::Storage>>,
+    pub signing_keys: Arc<Mutex<SigningKeys>>,
 }
 
 pub fn init_tracing(log_path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

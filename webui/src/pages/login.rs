@@ -1,110 +1,16 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use wasm_bindgen::JsCast;
-use gloo_net::http::Request;
-use serde::Deserialize;
 use crate::i18n::{use_i18n, t, t_string};
-
-fn get_api_login_url() -> String {
-    match option_env!("API_LOGIN_URL") { Some(s) => s.to_string(), None => "/auth/v1/login".to_string() }
-}
-
-fn get_api_refresh_token_url() -> String {
-    match option_env!("API_REFRESH_TOKEN_URL") { Some(s) => s.to_string(), None => "/auth/v1/refresh".to_string() }
-}
-
-#[derive(Deserialize)]
-struct LoginResponse {
-    jwt_token: String,
-    refresh_token: String,
-    expires_at: String,
-    refresh_expires_at: String,
-}
-
-fn store_tokens(jwt: &str, refresh: &str) {
-    if let Some(window) = web_sys::window() {
-        if let Ok(Some(storage)) = window.local_storage() {
-            let _ = storage.set_item("jwt_token", jwt);
-            let _ = storage.set_item("refresh_token", refresh);
-        }
-    }
-}
-
-fn utc_to_local(utc_date_str: &str) -> String {
-    // For now, just return the UTC string - in a real implementation,
-    // you'd use JavaScript's Date API to convert to local timezone
-    utc_date_str.to_string()
-}
-
-fn schedule_refresh_token(refresh_token: String, _refresh_expires_at: String) {
-    // For now, schedule a simple timeout - in a real implementation,
-    // you'd calculate the exact time until 5 seconds before expiry
-    if let Some(window) = web_sys::window() {
-        let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-            let refresh_token = refresh_token.clone();
-            spawn_local(async move {
-                refresh_token_request(refresh_token).await;
-            });
-        }) as Box<dyn FnMut()>);
-
-        // Schedule refresh in 10 seconds for testing (should be calculated properly)
-        let _ = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-            closure.as_ref().unchecked_ref(),
-            10000, // 10 seconds for testing
-        );
-        closure.forget();
-    }
-}
-
-async fn refresh_token_request(refresh_token: String) {
-    let body = serde_json::json!({
-        "refresh_token": refresh_token,
-    });
-
-    match Request::post(&get_api_refresh_token_url())
-        .header("Content-Type", "application/json")
-        .json(&body)
-    {
-        Ok(request) => {
-            match request.send().await {
-                Ok(resp) => {
-                    if resp.ok() {
-                        match resp.json::<LoginResponse>().await {
-                            Ok(login_resp) => {
-                                leptos::logging::log!("Token refresh successful");
-                                store_tokens(&login_resp.jwt_token, &login_resp.refresh_token);
-
-                                // Print expiration times in local timezone
-                                let local_expires = utc_to_local(&login_resp.expires_at);
-                                let local_refresh_expires = utc_to_local(&login_resp.refresh_expires_at);
-                                leptos::logging::log!("New token expires at: {} (local)", local_expires);
-                                leptos::logging::log!("New refresh token expires at: {} (local)", local_refresh_expires);
-
-                                // Schedule next refresh
-                                schedule_refresh_token(login_resp.refresh_token, login_resp.refresh_expires_at);
-                            }
-                            Err(e) => {
-                                leptos::logging::error!("Failed to parse refresh response: {:?}", e);
-                            }
-                        }
-                    } else {
-                        leptos::logging::error!("Token refresh failed with status: {}", resp.status());
-                    }
-                }
-                Err(e) => {
-                    leptos::logging::error!("Network error during token refresh: {:?}", e);
-                }
-            }
-        }
-        Err(e) => {
-            leptos::logging::error!("Failed to create refresh request: {:?}", e);
-        }
-    }
-}
+use crate::api::*;
+use crate::app_state::*;
+use crate::utc_to_local;
+use crate::storage::store_auth;
 
 #[component]
 pub fn Login() -> impl IntoView {
     let i18n = use_i18n();
+    let app_state = use_app_state();
     let (email, set_email) = signal(String::new());
     let (password, set_password) = signal(String::new());
     let (remember_me, set_remember_me) = signal(false);
@@ -161,57 +67,31 @@ pub fn Login() -> impl IntoView {
 
         // Make HTTP request
         spawn_local(async move {
-            let body = serde_json::json!({
-                "username": email_val,
-                "password": password_val,
-            });
-
-            match Request::post(&get_api_login_url())
-                .header("Content-Type", "application/json")
-                .json(&body)
-            {
-                Ok(request) => {
-                    match request.send().await {
-                        Ok(resp) => {
-                            if resp.ok() {
-                                match resp.json::<LoginResponse>().await {
-                                    Ok(login_resp) => {
-                                        leptos::logging::log!("Login successful: {}", email_val);
-
-                                        // Print expiration times in local timezone
-                                        let local_expires = utc_to_local(&login_resp.expires_at);
-                                        let local_refresh_expires = utc_to_local(&login_resp.refresh_expires_at);
-                                        leptos::logging::log!("Token expires at: {} (local)", local_expires);
-                                        leptos::logging::log!("Refresh token expires at: {} (local)", local_refresh_expires);
-
-                                        store_tokens(&login_resp.jwt_token, &login_resp.refresh_token);
-
-                                        // Schedule automatic token refresh
-                                        schedule_refresh_token(login_resp.refresh_token.clone(), login_resp.refresh_expires_at.clone());
-
-                                        // Redirect to home page
-                                        if let Some(window) = web_sys::window() {
-                                            let _ = window.location().set_href("/ui/videos/today");
-                                        }
-                                    }
-                                    Err(e) => {
-                                        leptos::logging::error!("Failed to parse response: {:?}", e);
-                                        set_error_message.set(t_string!(i18n, invalid_response).to_string());
-                                    }
-                                }
-                            } else {
-                                set_error_message.set(t_string!(i18n, invalid_credentials).to_string());
-                            }
+            match login(i18n, &email_val, &password_val).await {
+                Ok(login_resp) => {
+                    app_state.auth.set(Some(login_resp.clone()));
+                    if let Err(e) = store_auth(&login_resp) {
+                        leptos::logging::error!("Failed to store auth: {:?}", e);
+                    }
+                    if let Some(refresh) = login_resp.refresh_token.clone() {
+                        let local_expires = utc_to_local(&login_resp.expires_at);
+                        schedule_refresh_token(refresh, local_expires);
+                    }
+                    // Redirect to home page
+                    if let Some(window) = web_sys::window() {
+                        let mut location = "/".to_string();
+                        if let Some(win_location) = window.location().href().ok() {
+                            location = win_location.clone();
                         }
-                        Err(e) => {
-                            leptos::logging::error!("Network error: {:?}", e);
-                            set_error_message.set(t_string!(i18n, network_error).to_string());
+                        if location.ends_with("/login") {
+                            location = "/".to_string();
                         }
+                        leptos::logging::log!("Redirect to {}", &location);
+                        let _ = window.location().set_href(&location);
                     }
                 }
                 Err(e) => {
-                    leptos::logging::error!("Failed to create request: {:?}", e);
-                    set_error_message.set(t_string!(i18n, request_error).to_string());
+                    set_error_message.set(e.to_string());
                 }
             }
         });

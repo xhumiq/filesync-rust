@@ -1,33 +1,16 @@
 use leptos::prelude::*;
 use leptos_router::components::*;
-use crate::i18n::{use_i18n, t, Locale};
 use web_sys::window;
+use crate::i18n::{use_i18n, t, Locale};
+use crate::langs::toggle_locale;
 
 #[component]
 pub fn MainTopNav() -> impl IntoView {
-    let i18n = use_i18n();
     let (audio_dropdown_open, set_audio_dropdown_open) = signal(false);
 
+    let i18n = use_i18n();
     let toggle_language = move |_| {
-        let current_locale = i18n.get_locale();
-        let new_locale = match current_locale {
-            Locale::en => Locale::zh,
-            Locale::zh => Locale::fr,
-            Locale::fr => Locale::en,
-        };
-        i18n.set_locale(new_locale);
-
-        // Save to localStorage
-        if let Some(window) = window() {
-            if let Ok(Some(storage)) = window.local_storage() {
-                let locale_str = match new_locale {
-                    Locale::en => "en",
-                    Locale::zh => "zh",
-                    Locale::fr => "fr",
-                };
-                let _ = storage.set_item("locale", locale_str);
-            }
-        }
+        toggle_locale(i18n, "");
     };
     view! {
         {/* ==== TOP BAR ==== */}

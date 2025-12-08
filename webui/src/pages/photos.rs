@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use gloo::utils::document;
 use gloo::timers::callback::Timeout;
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
-use crate::i18n::{use_i18n, t};
-
+use crate::i18n::{use_i18n, t, Locale};
+use crate::langs::{get_locale, format_date};
 
  fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: WriteSignal<Option<NaiveDate>>) -> AnyView {
     let i18n = use_i18n();
@@ -31,7 +31,7 @@ use crate::i18n::{use_i18n, t};
 }
 
 fn photo_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
-    let i18n = use_i18n();
+    let (i18n, locale) = get_locale();
     // Sort entries by pub_date, then by event
     entries.sort_by(|a, b| {
         a.pub_date.date().cmp(&b.pub_date.date()).then(a.event.cmp(&b.event))
@@ -62,21 +62,9 @@ fn photo_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                             let entry = entry.clone();
                             let size_text = format_size(entry.size);
                             let bg_class = if index % 2 == 0 { "bg-white" } else { "bg-gray-50" };
-
                             let date_header = if Some(entry.pub_date.date()) != curr_date {
                                 curr_date = Some(entry.pub_date.date());
-                                let date_str = if crate::get_current_language_code() == "zh" {
-                                    entry.pub_date.date().format("%Y年%m月%d日 %A").to_string()
-                                        .replace("Monday", "星期一")
-                                        .replace("Tuesday", "星期二")
-                                        .replace("Wednesday", "星期三")
-                                        .replace("Thursday", "星期四")
-                                        .replace("Friday", "星期五")
-                                        .replace("Saturday", "星期六")
-                                        .replace("Sunday", "星期日")
-                                } else {
-                                    entry.pub_date.date().format("%A, %B %e, %Y").to_string()
-                                };
+                                let date_str = format_date(locale, &entry.pub_date.date());
                                 Some(view! {
                                     <div id={format!("date-{}", entry.pub_date.date().format("%Y%m%d"))} class="flex items-center justify-between px-4 py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b">
                                         <span>{date_str}</span>
@@ -152,7 +140,10 @@ fn photo_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
 /* --------------------------------------------------------------- */
 #[component]
 pub fn PhotosView() -> impl IntoView {
-    let i18n = use_i18n();
+    let (i18n, mut locale) = get_locale();
+    if locale == Locale::fr {
+        locale = Locale::en;
+    }
     let navigate = use_navigate();
     let navigate_for_effect = navigate.clone();
     let navigate_for_fetch = navigate.clone();
@@ -173,7 +164,7 @@ pub fn PhotosView() -> impl IntoView {
     let (_date_range, set_date_range) = signal(Option::<(NaiveDate, NaiveDate)>::None);
 
     /* ----------------------------------------------------------- */
-    /*  Effect: fetch the channel                                   */
+    /*  Effect: fetch the channel                                  */
     /* ----------------------------------------------------------- */
     Effect::new(move |_| {
         set_loading.set(true);
@@ -243,7 +234,7 @@ pub fn PhotosView() -> impl IntoView {
                     } else {
                         Vec::new()
                     }
-                } else if p=="all"{ 
+                } else if p == "all" {
                     ch.entries.clone()
                 } else if p.len() == 6 && p.chars().all(|c| c.is_digit(10)) {
                     if let Ok(mut date) = NaiveDate::parse_from_str(&p, "%y%m%d") {

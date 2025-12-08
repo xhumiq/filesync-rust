@@ -4,13 +4,14 @@ use leptos::prelude::*;
 use leptos_router::components::*;
 use leptos_router::hooks::use_navigate;
 use wasm_bindgen_futures::spawn_local;
+use chrono::NaiveDate;
 use crate::api::*;
 use crate::icons::*;
 use crate::models::channel::{Channel, MediaEntry};
-use chrono::NaiveDate;
-use crate::components::main_top_nav::MainTopNav;
+use crate::components::top_folder_nav::TopFolderNav;
 use crate::i18n::{use_i18n, t, Locale};
 use crate::langs::{get_locale, format_date};
+use crate::app_state::{ use_folder };
 
 fn breadcrumb_view(path: &str) -> impl IntoView {
     let i18n = use_i18n();
@@ -32,7 +33,7 @@ fn breadcrumb_view(path: &str) -> impl IntoView {
                 {segments.iter().enumerate().map(|(index, segment)| {
                     let is_last = index == segments.len() - 1;
                     let path_up_to_here = segments[0..=index].join("/");
-                    let href = format!("/files/{}", path_up_to_here);
+                    let href = format!("/browse/{}", path_up_to_here);
                     let segment_text = segment.to_string();
                     
                     view! {
@@ -89,7 +90,7 @@ fn file_list_view(path: &str, entries: Vec<MediaEntry>) -> AnyView {
                             let bg_class = if index % 2 == 0 { "bg-white" } else { "bg-gray-50" };
                             if entry.content_type == "folder" {
                                 view! {
-                                    <A href=format!("/files/{}/{}", path, entry.title) attr:class=format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)>
+                                    <A href=format!("/browse/{}/{}", path, entry.title) attr:class=format!("flex items-center px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 {}", bg_class)>
                                         <div class="flex items-center flex-1 min-w-0">
                                             <span style="margin-left: 15px;margin-right: 10px;max-width: 20px;max-height: 20px"><MimeTypeIcon content_type=entry.content_type.clone() mime_type=entry.mime_type.clone() /></span>
                                             <span class="truncate">{entry.title}</span>
@@ -125,7 +126,7 @@ fn file_list_view(path: &str, entries: Vec<MediaEntry>) -> AnyView {
 /*  Main component                                                */
 /* --------------------------------------------------------------- */
 #[component]
-pub fn Folder() -> impl IntoView {
+pub fn Custom() -> impl IntoView {
     let (i18n, locale) = get_locale();
     let navigate = use_navigate();
     let navigate_for_fetch = navigate.clone();
@@ -135,6 +136,10 @@ pub fn Folder() -> impl IntoView {
             .with(|p| p.get("path").map(|s| s.clone()))
             .unwrap_or_default()
     };
+    let folder = use_folder();
+    if folder.get().is_none() {
+        navigate("/files", Default::default());
+    }
 
     let (channel, set_channel) = signal(Option::<Channel>::None);
     let (loading, set_loading) = signal(false);
@@ -170,7 +175,7 @@ pub fn Folder() -> impl IntoView {
     /* ----------------------------------------------------------- */
     view! {
         <>
-            <MainTopNav />
+            <TopFolderNav />
 
             {/* ==== MAIN CONTENT ==== */}
             <div class="container p-4 mx-auto">

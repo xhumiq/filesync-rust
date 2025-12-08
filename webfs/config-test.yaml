@@ -11,7 +11,7 @@ channels:
   en:
     videos-all:
       title: "ACP GJCC Videos"
-      link: "https:/file.ziongjcc.org/Video"
+      link: "https://file.ziongjcc.org/Video"
       description: "GJCC Spritual Flow - All Videos"
       language: "en-us"
       file_path: "/home/mchu/Videos/ZSF"
@@ -21,7 +21,7 @@ channels:
       image_link: "http://example.com"
     audio-chi:
       title: "ACP GJCC Chinese Audio"
-      link: "https:/file.ziongjcc.org/Audio/chinese"
+      link: "https://file.ziongjcc.org/Audio/chinese"
       description: "GJCC Spritual Flow - Chinese Audio"
       category: "Christian"
       language: "zh-tw"
@@ -34,7 +34,7 @@ channels:
       filter_extension: ".mp3"
     audio-eng:
       title: "ACP GJCC English Audio"
-      link: "https:/file.ziongjcc.org/Audio/english"
+      link: "https://file.ziongjcc.org/Audio/english"
       description: "GJCC Spritual Flow - English Audio"
       category: "Christian"
       language: "en-us"
@@ -45,10 +45,26 @@ channels:
       image: "http://example.com/image.jpg"
       image_link: "http://example.com"
       filter_extension: ".mp3"
+  fr:
+    mt-tabor:
+      title: "Mt Tabor Service Recordings"
+      link: "https://file.ziongjcc.org"
+      media_link: "https://file-jp.ziongjcc.org"
+      description: "Mt Tabor Service Recordings"
+      category: "Christian"
+      language: "fr-pf"
+      author: "GJCC"
+      generator: "rss_writer"
+      server_name: "file-jp"
+      file_path: "/home/mchu/Videos/MtTabor"
+      output_path: "/ntc/tmp/mttabor.rss"
+      image: "http://example.com/image.jpg"
+      image_link: "http://example.com"
+      filter_extension: ".mp4"
   zh:
     videos-all:
       title: "新約教會 錄影檔"
-      link: "https:/file.ziongjcc.org/Video"
+      link: "https://file.ziongjcc.org/Video"
       description: "ACP GJCC 新約教會 錄影檔"
       category: "Christian"
       language: "zh-tw"
@@ -61,7 +77,7 @@ channels:
       filter_extension: ".mp4"
     audio-chi:
       title: "新約教會 錄音檔"
-      link: "https:/file.ziongjcc.org/Audio/chinese"
+      link: "https://file.ziongjcc.org/Audio/chinese"
       media_link: "https://file-jp.ziongjcc.org/Audio/chinese"
       description: "ACP GJCC 新約教會 錄音檔"
       category: "Christian"
@@ -74,3 +90,20 @@ channels:
       image: "http://example.com/image.jpg"
       image_link: "http://example.com"
       filter_extension: ".mp3"
+folders:
+  gjcc:
+    title:
+      en: "ZSF"
+      zh: "新約教會"
+      fr: "ZSF"
+    link: "https://file.ziongjcc.org"
+    base_file_path: "/home/mchu/"
+    group: "default"
+  mttabor:
+    title:
+      en: "Mt Tabor"
+      zh: "新約教會"
+      fr: "Mt Thabor"
+    link: "https://file.ziongjcc.org"
+    base_file_path: "/home/mchu/Videos/MtTabor"
+    group: "mttabor"

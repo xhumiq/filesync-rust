@@ -29,18 +29,22 @@ pub async fn start_file_monitor(config: &MonitorConfig, storage: Arc<Mutex<Stora
     let pattern = config.video_descr_file_pattern.as_str();
     let regex = Regex::new(pattern)?;
 
-    let scan_path = config.video_list_path.clone();
-    let storage_clone = storage.clone();
-    tokio::spawn(async move {
-        let mut interval = time::interval(Duration::from_secs(5)); // Poll every 5 seconds
-        loop {
-            interval.tick().await;
-            tracing::info!("Scanning files... {}", scan_path);
-            if let Err(e) = scan_and_store(&storage_clone, scan_path.as_str(), &regex).await {
-                tracing::error!("Error scanning files: {}", e);
+    if !config.video_list_path.is_empty() {
+        let scan_path = config.video_list_path.clone();
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            let mut interval = time::interval(Duration::from_secs(5)); // Poll every 5 seconds
+            loop {
+                interval.tick().await;
+                tracing::info!("Scanning files... {}", scan_path);
+                if let Err(e) = scan_and_store(&storage_clone, scan_path.as_str(), &regex).await {
+                    tracing::error!("Error scanning files: {}", e);
+                }
             }
-        }
-    });
+        });
+    }else{
+        tracing::warn!("File Description List Scan Skipped - WATCH_PATH not set");
+    }
     let mut rss_days = config.rss_days;
     if rss_days >= 0{
         if rss_days == 0{
@@ -77,7 +81,7 @@ async fn fill_and_queue_channels(channels_to_process: &[(String, Channel)], tx: 
     tracing::info!("Processing {} channels", channels_to_process.len());
     for (channel_name, ch) in channels_to_process {
         tracing::info!("---------------------------------------------------------");
-        tracing::info!("Filling channel {} {}", channel_name, &ch.file_path);
+        tracing::info!("Filling channel {} {}", ch.cache_id(), &ch.file_path);
 
         // Read and filter files from the directory
         let entries = Channel::read_dir(&ch)?;

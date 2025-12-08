@@ -129,6 +129,14 @@ pub fn format_event_date(ed: &str) -> String {
     }
 }
 
+pub fn normalize_code(event: &str) -> String {
+    if RE_ZSV_INDEX_SINGLE.is_match(event) {
+        format!("0{}", event)
+    } else {
+        event.to_string()
+    }
+}
+
 pub fn normalize_location(loc: &str) -> String {
     match loc {
         "MH" => "MtHermon".to_string(),
@@ -204,6 +212,7 @@ pub fn parse_media_type_from_mime(mime_type: &str) -> String {
 }
 
 lazy_static! {
+    pub static ref RE_ZSV_INDEX_SINGLE: Regex = Regex::new(r"^(\d[a-z]{0,2}(?:&[a-z])?)$").expect("Invalid regex RE_ZSV_INDEX");
     pub static ref MIME_TYPE_MAP: HashMap<&'static str, &'static str> = {
         let mut map = HashMap::new();
         // Video formats

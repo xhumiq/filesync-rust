@@ -1,7 +1,8 @@
-use webfs::auth::handler::{authenticate_handler, refresh_handler};
+use webfs::auth::handler::{authenticate_handler, refresh_handler, signurl_handler, nginx_handler};
+use webfs::models::auth::SigningKeys;
 
 use axum::{
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use tokio::net::{TcpListener, UnixListener};
@@ -10,6 +11,7 @@ use reqwest::Client;
 use tower_http::cors::CorsLayer;
 use webfs::models::files::Channel;
 use webfs::storage::Storage;
+use webfs::webfs::handler::*;
 use std::env;
 
 #[tokio::main]
@@ -69,6 +71,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
+    let signing_keys = SigningKeys::new(3600 * 24 * 30, 3600); // 30 days key expire, 1 hour sig expire
+
     let state = AppState {
         keycloak_url,
         realm: std::env::var("REALM").map_err(|e| {
@@ -88,14 +92,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         config: config.clone(),
         channel_cache: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         storage: std::sync::Arc::new(std::sync::Mutex::new(storage)),
+        signing_keys: std::sync::Arc::new(std::sync::Mutex::new(signing_keys)),
     };
 
     // Start file monitoring in background
-    let watch_path = std::env::var("WATCH_PATH").unwrap_or("/srv/media/Video".to_string());
+    let watch_path = std::env::var("WATCH_PATH").unwrap_or("".to_string());
     let rss_outpath = std::env::var("RSS_OUT_PATH").unwrap_or("/srv/rss".to_string());
     let file_pattern = std::env::var("FILE_PATTERN").unwrap_or(r"zsv[\d]{6}.*\.docx".to_string());
     let rss_days = std::env::var("RSS_DAYS").unwrap_or("-1".to_string()).parse::<i32>().ok();
-    println!("RSS_DAYS: {}", rss_days.unwrap_or(-1));
 
     let monitor_config = webfs::webfs::file_monitor::MonitorConfig {
         config: config.clone(),
@@ -117,7 +121,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let app = Router::new()
         .route("/auth/v1/login", post(authenticate_handler))
         .route("/auth/v1/refresh", post(refresh_handler))
-        .route("/fs/v1/{*path}", axum::routing::get(webfs::webfs::handler::list_files_handler))
+        .route("/auth/v1/signurl", post(signurl_handler))
+        .route("/auth/v1/nginx", get(nginx_handler))
+        .route("/fs/v1/", get(list_files_root_handler))
+        .route("/fs/v1/{*path}", get(list_files_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

@@ -20,6 +20,7 @@ pub struct Config {
     #[serde(default)]
     pub paths: HashMap<String, HashMap<String, Channel>>,
     pub default: ChannelDefaults,
+    pub folders: HashMap<String, FolderShare>,
 }
 
 impl Config {
@@ -171,7 +172,13 @@ impl Default for Channel {
 impl Channel {
 
     pub fn cache_id(&self) -> String {
-        let lang = if self.copy_lang.starts_with("zh") { "zh" } else { "en" };
+        let lang = if self.copy_lang.starts_with("zh") { 
+            "zh" 
+        } else if self.copy_lang.starts_with("fr"){
+            "fr"
+        } else { 
+            "en" 
+        };
         format!("{}/{}", lang, self.name)
     }
     pub fn read_config(path: &str) -> Result<Config> {
@@ -251,7 +258,17 @@ impl Channel {
                 }
             }
         }
-
+        let mut folders: HashMap<String, FolderShare> = HashMap::new();
+        for (name, folder) in &config.folders {
+            let mut f = folder.clone();
+            if folder.name.is_empty() {
+                f.name = name.clone();
+            } else if folder.name != *name {
+                folders.insert(name.to_string(), f.clone());
+            }
+            folders.insert(f.name.clone(), f.clone());
+        }
+        config.folders = folders;
         Ok(config)
     }
 
@@ -395,15 +412,15 @@ impl Channel {
         let mut writer = Writer::new(buf_writer);
 
         // Write RSS
-        self.write_rss(&mut writer, Some(start_date))?;
+        let count = self.write_rss(&mut writer, Some(start_date))?;
 
-        tracing::info!("RSS feed written to {} with {} entries", output, self.entries.len());
+        tracing::info!("RSS feed written to {} with {} entries", output, count);
         Ok(())
     }
 
 
 
-    pub fn write_rss<W: std::io::Write>(&mut self, writer: &mut Writer<W>, start_date: Option<NaiveDate>) -> Result<()> {
+    pub fn write_rss<W: std::io::Write>(&mut self, writer: &mut Writer<W>, start_date: Option<NaiveDate>) -> Result<usize> {
 
         // Start RSS root element
         let mut rss_start = BytesStart::new("rss");
@@ -439,10 +456,12 @@ impl Channel {
 
         let mut files = self.entries.clone();
 
-        if let Some(start_date) = start_date {
-            files = files.into_iter().filter(|entry| {
-                entry.pub_date.date() >= start_date
-            }).collect();
+        if !self.language.starts_with("fr"){
+            if let Some(start_date) = start_date {
+                files = files.into_iter().filter(|entry| {
+                    entry.pub_date.date() >= start_date
+                }).collect();
+            }
         }
 
         // Add items for each entry
@@ -454,7 +473,7 @@ impl Channel {
         writer.write_event(Event::End(BytesEnd::new("channel")))?;
         writer.write_event(Event::End(BytesEnd::new("rss")))?;
 
-        Ok(())
+        Ok(files.len())
     }
 }
 
@@ -535,7 +554,7 @@ impl MediaEntry {
         format!("{}{}-{}", prefix, self.file_date_stamp, self.event)
     }
     pub fn normalized_event_id(&self, prefix : &str) -> String {
-        let event_part = if RE_ZSV_INDEX_SINGLE.is_match(&self.event) {
+        let event_part = if super::formatter::RE_ZSV_INDEX_SINGLE.is_match(&self.event) {
             format!("0{}", &self.event)
         } else {
             self.event.to_string()
@@ -547,15 +566,15 @@ impl MediaEntry {
         if self.content_type == "folder" {
             return self.guid.clone();
         }
-        let event_part = if RE_ZSV_INDEX_SINGLE.is_match(&self.event) {
+        let event_part = if super::formatter::RE_ZSV_INDEX_SINGLE.is_match(&self.event) {
             format!("0{}", &self.event)
         } else {
-            self.event.to_string()
+            return self.guid.clone();
         };
         if self.index.is_empty() {
             return format!("{}{}-{}", prefix, self.file_date_stamp, event_part)
         }
-        let index_part = if RE_ZSV_INDEX_SINGLE.is_match(&self.index) {
+        let index_part = if super::formatter::RE_ZSV_INDEX_SINGLE.is_match(&self.index) {
             format!("0{}", &self.index)
         } else {
             self.index.to_string()
@@ -579,6 +598,7 @@ impl MediaEntry {
         if fi.file_name.is_empty() {
             fi.file_name = entry.file_name().to_string_lossy().to_string();
         }
+        fi.event = fi.event.replace("&", "");
         fi.size = metadata.len();
         fi.modified = metadata.modified()?;
         // Set pub_date based on file_date_stamp if valid, otherwise use modified time
@@ -649,31 +669,33 @@ impl MediaEntry {
     }
 
     fn construct_title(&self) -> String {
-        let mut evt = self.event.clone();
-        if !self.day_night.is_empty() {
-            evt = format!("{}{}", self.day_night, evt);
+        let mut evt = super::formatter::normalize_code(&self.event).to_string();
+        if !self.index.is_empty() { 
+            let idx = super::formatter::normalize_code(&self.index).to_string();
+            evt = format!("{}-{}", evt, idx);
         }
-        let idx = if self.index.is_empty() { String::new() } else { format!("-{}", self.index) };
-        let cd = contentDesc(&self.event_code, &self.event_desc);
-        let cd = if cd.is_empty() { String::new() } else { format!(" {}", cd) };
-        let loc = super::formatter::normalize_location(&self.location);
-        let loc = if loc.is_empty() { String::new() } else { format!(" {}", loc) };
-        let ed = super::formatter::format_event_date(&self.event_date_stamp);
-        format!("{}{}{}{}{}", evt, idx, cd, loc, ed)
+        let mut cd = contentDesc(&self.event_code, &self.event_desc);
+        if !cd.is_empty() { cd = format!(" {}", cd) };
+        format!("{}{}", evt, cd).trim_start().to_string()
     }
 
     fn construct_description(&self) -> String {
-        let mut evt = self.event.clone();
-        if !self.day_night.is_empty() {
-            evt = format!("{}{}", self.day_night, evt);
+        let mut evt = super::formatter::normalize_code(&self.event).to_string();
+        if !self.index.is_empty() { 
+            let idx = super::formatter::normalize_code(&self.index).to_string();
+            evt = format!("{}-{}", evt, idx);
         }
-        let idx = if self.index.is_empty() { String::new() } else { format!("-{}", self.index) };
-        let evn = if self.day_night == "e" { " Evening" } else { "" };
+        if !evt.is_empty() { evt = format!(" ({})", evt).to_string(); }
         let loc = super::formatter::normalize_location(&self.location);
-        let loc = if loc.is_empty() { String::new() } else { format!(" {}", loc) };
-        let sub = if self.event_desc.is_empty() { String::new() } else { format!(" {}", self.event_desc.replace("M.V.", "Music Video")) };
+        let mut sub = if self.event_desc.is_empty() { 
+            let cd = contentDesc(&self.event_code, &self.event_desc);
+            if cd.is_empty() { String::new() } else { format!(" {}", cd) }
+        } else { 
+            format!(" {}", self.event_desc.replace("M.V.", "Music Video")) 
+        };
+        if self.day_night == "e" { sub += " Evening" }
         let ed = super::formatter::format_event_date(&self.event_date_stamp);
-        format!("{}{}{}{}{}{}", evt, idx, evn, loc, sub, ed)
+        format!("{}{}{}{}", loc, sub, ed, evt).trim_start().to_string()
     }
 
     fn format_released_date(&self) -> String {
@@ -764,7 +786,7 @@ fn parse_photo_archive_name(filename: &str) -> MediaEntry {
     fi
 }
 
-fn parse_file_name(filename: &str) -> MediaEntry {
+pub fn parse_file_name(filename: &str) -> MediaEntry {
     let base = std::path::Path::new(filename).file_name().unwrap_or_default().to_string_lossy().to_string();
     let mut fi = MediaEntry {
         mime_type: super::formatter::parse_mime_type(filename),
@@ -808,6 +830,59 @@ fn parse_file_name(filename: &str) -> MediaEntry {
         return fi;
     }
 
+    if let Some(caps) = RE_ZS_PATTERN.captures(&base) {
+        fi.content_type = "zs".to_string();
+        fi.file_date_stamp = caps.get(1).map_or("", |m| m.as_str()).to_string();
+        fi.day_night = caps.get(2).map_or("", |m| m.as_str()).to_string();
+        fi.event = caps.get(4).map_or("", |m| m.as_str()).to_string();
+        if fi.event.starts_with("e") && fi.event.len() > 2 {
+            fi.day_night = "e".to_string();
+            fi.event = fi.event[1..].to_string();
+        }
+        if fi.event.len() > 1 {
+            fi.event_code = fi.event.chars().last().expect("len > 1").to_string();
+        }
+        fi.event_desc = caps.get(5).map_or("", |m| m.as_str()).trim_matches('-').to_string();
+        if fi.event_desc.is_empty() {
+            fi.event_desc = contentDesc(&fi.event_code, "");
+        } else if let Some(caps_desc) = RE_ZSV_DESC_PATTERN.captures(&fi.event_desc) {
+            fi.location = caps_desc.get(1).map_or("", |m| m.as_str()).to_string();
+            fi.event_date_stamp = caps_desc.get(2).map_or("", |m| m.as_str()).to_string();
+            fi.event_desc = caps_desc.get(3).map_or("", |m| m.as_str()).to_string();
+        }
+        if !fi.event_desc.is_empty() {
+            fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
+        }
+        return fi;
+    }
+
+    if let Some(caps) = RE_THABOR_PATTERN.captures(&base) {
+        fi.content_type = "thabor".to_string();
+        fi.file_date_stamp = caps.get(1).map_or("", |m| m.as_str()).to_string();
+        fi.day_night = caps.get(2).map_or("", |m| m.as_str()).to_string();
+        fi.index = caps.get(3).map_or("", |m| m.as_str()).to_string();
+        fi.event_desc = caps.get(4).map_or("", |m| m.as_str()).trim_matches('-').to_string();
+        if !fi.event_desc.is_empty() {
+            if fi.event_desc.contains("-R"){
+                fi.event = "1r".to_string();
+            }
+            if fi.event_desc.contains("Soir"){
+                fi.day_night = "e".to_string();
+            }
+            fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
+        }
+        if fi.event.is_empty() {
+            fi.event = "1c".to_string();
+        }
+        fi.event_code = fi.event.chars().last().expect("len > 1").to_string();
+        if fi.index.is_empty() {
+            fi.index = "1".to_string();
+        }
+        fi.event_date_stamp = fi.file_date_stamp.clone();
+        fi.location = "Mt Thabor".to_string();
+        return fi;
+    }
+
     if let Some(caps) = RE_ANY_FULL_PATTERN.captures(&base) {
         fi.content_type = caps.get(1).map_or("", |m| m.as_str()).to_string();
         fi.file_date_stamp = caps.get(2).map_or("", |m| m.as_str()).to_string();
@@ -836,33 +911,7 @@ fn parse_file_name(filename: &str) -> MediaEntry {
         }
         return fi;
     }
-
-    if let Some(caps) = RE_ZS_PATTERN.captures(&base) {
-        fi.content_type = "zs".to_string();
-        fi.file_date_stamp = caps.get(1).map_or("", |m| m.as_str()).to_string();
-        fi.day_night = caps.get(2).map_or("", |m| m.as_str()).to_string();
-        fi.event = caps.get(4).map_or("", |m| m.as_str()).to_string();
-        if fi.event.starts_with("e") && fi.event.len() > 2 {
-            fi.day_night = "e".to_string();
-            fi.event = fi.event[1..].to_string();
-        }
-        if fi.event.len() > 1 {
-            fi.event_code = fi.event.chars().last().expect("len > 1").to_string();
-        }
-        fi.event_desc = caps.get(5).map_or("", |m| m.as_str()).trim_matches('-').to_string();
-        if fi.event_desc.is_empty() {
-            fi.event_desc = contentDesc(&fi.event_code, "");
-        } else if let Some(caps_desc) = RE_ZSV_DESC_PATTERN.captures(&fi.event_desc) {
-            fi.location = caps_desc.get(1).map_or("", |m| m.as_str()).to_string();
-            fi.event_date_stamp = caps_desc.get(2).map_or("", |m| m.as_str()).to_string();
-            fi.event_desc = caps_desc.get(3).map_or("", |m| m.as_str()).to_string();
-        }
-        if !fi.event_desc.is_empty() {
-            fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
-        }
-        return fi;
-    }
-
+   
     if let Some(caps) = RE_HYMN_PATTERN.captures(&base) {
         fi.content_type = "zs".to_string();
         fi.file_date_stamp = caps.get(1).map_or("", |m| m.as_str()).to_string();
@@ -886,7 +935,11 @@ fn contentDesc(contentType: &str, event_desc: &str) -> String {
         "r" => "Report".to_string(),
         "v" => "Video".to_string(),
         "c" => {
-            event_desc.to_string()
+            if event_desc.is_empty() { 
+                "Testimony".to_string() 
+            } else { 
+                event_desc.to_string()
+            }
         },
         "n" => "News".to_string(),
         "z" => "Life".to_string(),
@@ -933,14 +986,14 @@ fn default_base_output_path() -> String {
 const PARALLEL_THRESHOLD: usize = 35000;
 
 lazy_static! {
-    static ref RE_ZSV_PATTERN: Regex = Regex::new(r"^zsv(\d{6})(e?)-(\d{1,2}[a-z]|\w+)(?:-(\d{1,2}z?)(?:-([^(.]+))?)?").expect("Invalid regex RE_ZSV_PATTERN");
-    static ref RE_ANY_FULL_PATTERN: Regex = Regex::new(r"^([A-Za-z]+)(\d{8})(e?)-(\d{1,2}[a-z]|\w+)(?:-(.+))?.mp4").expect("Invalid regex RE_ANY_FULL_PATTERN");
+    static ref RE_ZSV_PATTERN: Regex = Regex::new(r"^zsv(\d{6})(e?)-(\d{1,2}[a-z]{1,2}(?:&[a-z])?|\w+)(?:-(\d{1,2}z?)(?:-([^(.]+))?)?").expect("Invalid regex RE_ZSV_PATTERN");
+    static ref RE_ANY_FULL_PATTERN: Regex = Regex::new(r"^([A-Za-z]+)(\d{8})(e?)-(\d{1,2}[a-z]{1,2}(?:&[a-z])?|\w+)(?:-(.+))?.mp4").expect("Invalid regex RE_ANY_FULL_PATTERN");
     static ref RE_ZSV_DESC_PATTERN: Regex = Regex::new(r"^([\w][\w\d]+)(?:[-]?(\d{6}|\d{2}\.\d{2}\.\d{4}))?-([^(.]+)").expect("Invalid regex RE_ZSV_DESC_PATTERN");
     static ref RE_ZSV_DESC_DATED: Regex = Regex::new(r"(.*?)(?:[-_])?(\d{6}|\d{2}\.\d{2}\.\d{4})(e)?(?:-([^(.]+))?").expect("Invalid regex RE_ZSV_DESC_DATED");
-    static ref RE_ZS_PATTERN: Regex = Regex::new(r"^zs(\d{6})(e?)(?:-?([a-z]{1,3}))?-(e?\d{1,2}[a-z]z?)(?:-?([^(.]+))?").expect("Invalid regex RE_ZS_PATTERN");
+    static ref RE_ZS_PATTERN: Regex = Regex::new(r"^zs(\d{6})(e?)(?:-?([a-z]{1,3}))?-(e?\d{1,2}[a-z]{1,2}(?:&[a-z])?)(?:-?([^(.]+))?").expect("Invalid regex RE_ZS_PATTERN");
     static ref RE_HYMN_PATTERN: Regex = Regex::new(r"^zs(\d{6})-(s\d{1,2})-h(\d{4})(?:-?([^(.]+))?").expect("Invalid regex RE_HYMN_PATTERN");
     static ref RE_PHOTOS_ARCHIVE: Regex = Regex::new(r"^([\d]*[A-Za-z\'\-\_]+)(\d{6})(?:~(\d{1,4}))?([a-z])?\-([^(]+)").expect("Invalid regex RE_PHOTOS_ARCHIVE");
-    static ref RE_ZSV_INDEX_SINGLE: Regex = Regex::new(r"^(\d[a-z]?)$").expect("Invalid regex RE_ZSV_INDEX");
+    static ref RE_THABOR_PATTERN: Regex = Regex::new(r"^Thabor(\d{8})(e?)-(\d{1,2}[a-z]{1,2}(?:&[a-z])?)(?:-(.+))?-fra-lbr.mp4").expect("Invalid regex RE_ANY_FULL_PATTERN");
     static ref MIME_TYPE_MAP: HashMap<&'static str, &'static str> = {
         let mut map = HashMap::new();
         // Video formats
@@ -1000,3 +1053,12 @@ lazy_static! {
     };
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct FolderShare {
+    #[serde(default)]
+    pub name: String,
+    pub title: HashMap<String, String>,
+    pub link: String,
+    pub base_file_path: String,
+    pub group: String,
+}

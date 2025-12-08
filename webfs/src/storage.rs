@@ -144,7 +144,6 @@ impl Storage {
     }
 
     pub fn channel_descriptions(&self, ch: Channel, cache: Arc<Mutex<HashMap<String, (Channel, chrono::DateTime<chrono::Utc>)>>>) -> Result<(Channel, bool)> {
-
         let cached_ch_option = {
             let _cache: std::sync::MutexGuard<'_, HashMap<String, (Channel, chrono::DateTime<Utc>)>> = cache.lock().unwrap();
             _cache.get(&ch.cache_id()).cloned()
@@ -190,19 +189,21 @@ impl Storage {
             let mut entry = entry.clone();
             let key = entry.normalized_event_id("zsv");
             if let Some(desc) = table.get(key.as_str())?.map(|v| bincode::deserialize::<FileDesc>(v.value().as_slice()).unwrap()) {
-                entry.description = if channel.copy_lang.starts_with("zh") {
-                    if !entry.index.is_empty() {
-                        format!("{} ({})", desc.chi_descr, entry.index)
-                    }else{
-                        desc.chi_descr.clone()
+                if channel.copy_lang.starts_with("zh") {
+                    if !desc.chi_descr.is_empty() { 
+                        let mut evt = crate::models::formatter::normalize_code(&entry.event).to_string();
+                        if !entry.index.is_empty() { evt = format!("{}-{}", evt, entry.index); }
+                        if !evt.is_empty() { evt = format!(" ({})", evt).to_string(); }
+                        entry.description = format!("{}{}", desc.chi_descr, evt);
                     }
-                }else{
-                    if !entry.index.is_empty() {
-                        format!("{} ({})", desc.eng_descr, entry.index)
-                    }else{
-                        desc.eng_descr.clone()
-                    }
-                };
+                }else if channel.copy_lang.starts_with("en"){
+                    if !desc.eng_descr.is_empty() { 
+                        let mut evt = crate::models::formatter::normalize_code(&entry.event).to_string();
+                        if !entry.index.is_empty() { evt = format!("{}-{}", evt, entry.index); }
+                        if !evt.is_empty() { evt = format!(" ({})", evt).to_string(); }
+                        entry.description = format!("{}{}", desc.eng_descr, evt);
+                    };
+                }
             }else if channel.copy_lang == "zh" {
                 if let Some(cached_entry) = entryMap.get(&key) {
                     entry.description = cached_entry.description.clone();
@@ -214,5 +215,4 @@ impl Storage {
         channel.set_entries(entries);
         Ok(channel)
     }
-
 }

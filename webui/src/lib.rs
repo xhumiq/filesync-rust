@@ -1,55 +1,86 @@
 leptos_i18n::load_locales!();
 use leptos::prelude::*;
+use leptos_i18n::I18nContext;
 use leptos_meta::*;
 use leptos_router::{components::*, path};
+use leptos_router::hooks::{use_navigate, use_location};
 use serde_json;
-use crate::i18n::*; // `i18n` module created by the macro above
+use chrono::{DateTime, Utc, Local, FixedOffset};
+use anyhow::{anyhow, Result};
+use js_sys;
+
+use crate::i18n::*;
+use crate::pages::videos::VideoView;
+use crate::pages::audio::AudioView;
+use crate::pages::photos::PhotosView;
+use crate::pages::home::Home;
+use crate::pages::login::Login;
+use crate::pages::custom::Custom;
+use crate::pages::folder::Folder;
+use crate::pages::not_found::NotFound;
+use crate::components::private::Private;
+use crate::models::auth::{AuthResponse};
+use crate::app_state::{provide_app_state, use_folder};
 // Modules
 mod api;
 mod components;
 mod icons;
 mod models;
 mod pages;
+mod langs;
+mod app_state;
+mod storage;
 
-// Top-Level pages
-use crate::pages::folder::Folder;
-use crate::pages::videos::VideoView;
-use crate::pages::audio::AudioView;
-use crate::pages::photos::PhotosView;
-use crate::pages::home::Home;
-use crate::pages::login::Login;
-use crate::pages::not_found::NotFound;
+pub fn utc_to_local(utc_date_str: &str) -> DateTime<FixedOffset> {
+    // Parse the RFC3339 string to DateTime<Utc>
+    let dt_utc: DateTime<Utc> = match DateTime::parse_from_rfc3339(utc_date_str) {
+        Ok(dt) => dt.with_timezone(&Utc),
+        Err(_) => return DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z").unwrap().with_timezone(&FixedOffset::east_opt(0).unwrap()), // fallback
+    };
 
-/// Get the current language code from localStorage or browser language
-pub fn get_current_language_code() -> String {
-    if let Some(window) = web_sys::window() {
-        // First check localStorage
-        if let Ok(Some(storage)) = window.local_storage() {
-            if let Ok(Some(locale_str)) = storage.get_item("locale") {
-                if locale_str.starts_with("zh") {
-                    return "zh".to_string();
-                } else if locale_str.starts_with("fr") {
-                    return "fr".to_string();
-                }
-                return "en".to_string();
-            }
-        }
+    // Create JS Date from timestamp to get local offset
+    let timestamp_ms = dt_utc.timestamp_millis() as f64;
+    let js_date = js_sys::Date::new_0();
+    js_date.set_time(timestamp_ms);
 
-        // Fall back to browser language
-        match window.navigator().language() {
-            Some(lang) => {
-                if lang.starts_with("zh") {
-                    return "zh".to_string();
-                } else if lang.starts_with("fr") {
-                    return "fr".to_string();
-                }
-            }
-            None => {}
-        }
-    }
+    // Get timezone offset in minutes (positive for west of UTC)
+    let offset_minutes = js_date.get_timezone_offset() as i32;
+    let offset_seconds = - (offset_minutes * 60); // FixedOffset east seconds
 
-    // Default to English
-    "en".to_string()
+    let local_offset = FixedOffset::east_opt(offset_seconds).unwrap();
+
+    dt_utc.with_timezone(&local_offset)
+}
+
+#[component]
+fn PrivateHomeView() -> impl IntoView {
+    view! { <Private><Home /></Private> }
+}
+
+// Private wrapper components
+#[component]
+fn PrivateVideoView() -> impl IntoView {
+    view! { <Private><VideoView /></Private> }
+}
+
+#[component]
+fn PrivateAudioView() -> impl IntoView {
+    view! { <Private><AudioView /></Private> }
+}
+
+#[component]
+fn PrivatePhotosView() -> impl IntoView {
+    view! { <Private><PhotosView /></Private> }
+}
+
+#[component]
+fn PrivateFolderView() -> impl IntoView {
+    view! { <Private><Folder /></Private> }
+}
+
+#[component]
+fn PrivateBrowseView() -> impl IntoView {
+    view! { <Private><Custom /></Private> }
 }
 
 /// An app router which renders the homepage and handles 404's
@@ -69,6 +100,7 @@ pub fn App() -> impl IntoView {
 
     // Provides context that manages stylesheets, titles, meta tags, etc.
     provide_meta_context();
+    provide_app_state();
 
     view! {
         <I18nContextProvider>
@@ -79,46 +111,7 @@ pub fn App() -> impl IntoView {
 
             // Set initial locale from localStorage or browser language
             {move || {
-                let i18n = use_i18n();
-                if let Some(window) = web_sys::window() {
-                    // First check localStorage
-                    let mut locale = if let Ok(Some(storage)) = window.local_storage() {
-                        if let Ok(Some(locale_str)) = storage.get_item("locale") {
-                            match locale_str.as_str() {
-                                "zh" => Some(Locale::zh),
-                                "en" => Some(Locale::en),
-                                _ => None,
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-
-                    // If not in localStorage, check browser language
-                    if locale.is_none() {
-                        match window.navigator().language() {
-                            Some(lang) => {
-                                if lang.starts_with("zh") {
-                                    locale = Some(Locale::zh);
-                                } else if lang.starts_with("fr") {
-                                    locale = Some(Locale::fr);
-                                } else {
-                                    locale = Some(Locale::en);
-                                }
-                            }
-                            None => {
-                                locale = Some(Locale::en);
-                            }
-                        }
-                    }
-
-                    // Set the locale
-                    if let Some(loc) = locale {
-                        i18n.set_locale(loc);
-                    }
-                }
+                let (i18n, _) = langs::get_locale();
             }}
 
             // injects metadata in the <head> of the page
@@ -126,14 +119,15 @@ pub fn App() -> impl IntoView {
             <Meta name="viewport" content="width=device-width, initial-scale=1.0" />
             <Router>
                 <Routes fallback=NotFound>
-                    <Route path=path!("/") view=Home />
+                    <Route path=path!("/") view=PrivateHomeView />
                     <Route path=path!("/account/login") view=Login />
-                    <Route path=path!("/ui/videos/*path") view=VideoView />
-                    <Route path=path!("/ui/audio/*path") view=AudioView />
-                    <Route path=path!("/ui/docs/*path") view=Folder />
-                    <Route path=path!("/ui/photos/*path") view=PhotosView />
-                    <Route path=path!("/ui/hymns/*path") view=Folder />
-                    <Route path=path!("/files/*path") view=Folder />
+                    <Route path=path!("/ui/videos/*path") view=PrivateVideoView />
+                    <Route path=path!("/ui/audio/*path") view=PrivateAudioView />
+                    <Route path=path!("/ui/docs/*path") view=PrivateFolderView />
+                    <Route path=path!("/ui/photos/*path") view=PrivatePhotosView />
+                    <Route path=path!("/ui/hymns/*path") view=PrivateFolderView />
+                    <Route path=path!("/browse/*path") view=PrivateBrowseView />
+                    <Route path=path!("/files/*path") view=PrivateFolderView />
                 </Routes>
             </Router>
         </I18nContextProvider>

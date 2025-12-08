@@ -9,7 +9,8 @@ use crate::components::main_top_nav::MainTopNav;
 use crate::components::calendar::Calendar;
 use chrono::{NaiveDate, Utc};
 use std::collections::HashMap;
-use crate::i18n::{use_i18n, t};
+use crate::i18n::{use_i18n, t, Locale};
+use crate::langs::{get_locale, format_date};
 
 fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: WriteSignal<Option<NaiveDate>>) -> AnyView {
     let i18n = use_i18n();
@@ -27,7 +28,7 @@ fn menu_view(date_map: Option<HashMap<NaiveDate, usize>>, set_selected_date: Wri
 }
 
 fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
-    let i18n = use_i18n();
+    let (i18n, locale) = get_locale();
     // Sort entries by pub_date, then by event
     entries.sort_by(|a, b| {
         a.pub_date.date().cmp(&b.pub_date.date()).then(a.event.cmp(&b.event)).then(a.index.cmp(&b.index))
@@ -49,33 +50,21 @@ fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                             </div>
                         }.into_any()
                     } else {
+                        let today = Utc::now().date_naive();
                         let mut curr_date = None::<NaiveDate>;
                         let mut curr_event = None::<String>;
-                        let today = Utc::now().date_naive();
                         entries_clone.iter().enumerate().map(|(index, entry)| {
                             let entry = entry.clone();
                             let size_text = format_size(entry.size);
                             let bg_class = if index % 2 == 0 { "bg-white" } else { "bg-gray-50" };
-
                             let date_header = if Some(entry.pub_date.date()) != curr_date {
                                 curr_date = Some(entry.pub_date.date());
-                                let date_str = if crate::get_current_language_code() == "zh" {
-                                    entry.pub_date.date().format("%Y年%m月%d日 %A").to_string()
-                                        .replace("Monday", "星期一")
-                                        .replace("Tuesday", "星期二")
-                                        .replace("Wednesday", "星期三")
-                                        .replace("Thursday", "星期四")
-                                        .replace("Friday", "星期五")
-                                        .replace("Saturday", "星期六")
-                                        .replace("Sunday", "星期日")
-                                } else {
-                                    entry.pub_date.date().format("%A, %B %e, %Y").to_string()
-                                };
+                                let date_str = format_date(locale, &entry.pub_date.date());
                                 Some(view! {
-                                    <div class="flex items-center justify-between py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b" style="padding-left: 15px;">
+                                    <div id={format!("date-{}", entry.pub_date.date().format("%Y%m%d"))} class="flex items-center justify-between px-4 py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b">
                                         <span>{date_str}</span>
                                         <div class="flex items-center gap-2">
-                                            {if entry.pub_date.date() == first_date {
+                                            {if entry.pub_date.date() == first_date || entry.pub_date.date() == last_date {
                                                 view! {
                                                     <A href=format!("/ui/videos/{}", prev_date.format("%y%m%d")) attr:class="btn btn-sm btn-ghost">
                                                         {t!(i18n, previous_day)}
@@ -84,7 +73,7 @@ fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                                             } else{
                                                 view! { <></> }.into_any()
                                             }}
-                                            {if next_date <= today && entry.pub_date.date() == last_date {
+                                            {if next_date <= today && (entry.pub_date.date() == first_date || entry.pub_date.date() == last_date) {
                                                 view! {
                                                     <A href=format!("/ui/videos/{}", next_date.format("%y%m%d")) attr:class="btn btn-sm btn-ghost">
                                                         {t!(i18n, next_day)}
@@ -143,18 +132,7 @@ fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
                     if !entries.is_empty() {
                         let entry = &entries[0];
                         let today = Utc::now().date_naive();
-                        let date_str = if crate::get_current_language_code() == "zh" {
-                            entry.pub_date.date().format("%Y年%m月%d日 %A").to_string()
-                                .replace("Monday", "星期一")
-                                .replace("Tuesday", "星期二")
-                                .replace("Wednesday", "星期三")
-                                .replace("Thursday", "星期四")
-                                .replace("Friday", "星期五")
-                                .replace("Saturday", "星期六")
-                                .replace("Sunday", "星期日")
-                        } else {
-                            entry.pub_date.date().format("%A, %B %e, %Y").to_string()
-                        };
+                        let date_str = format_date(locale, &entry.pub_date.date());
                         Some(view! {
                             <div class="flex items-center justify-between py-2 text-lg font-bold text-gray-800 bg-gray-200 border-b" style="padding-left: 15px;">
                                 <span>{date_str}</span>
@@ -191,7 +169,10 @@ fn video_list_view(mut entries: Vec<MediaEntry>) -> AnyView {
 /* --------------------------------------------------------------- */
 #[component]
 pub fn VideoView() -> impl IntoView {
-    let i18n = use_i18n();
+    let (i18n, mut locale) = get_locale();
+    if locale == Locale::fr {
+        locale = Locale::en;
+    }
     let navigate = use_navigate();
     let navigate_for_fetch = navigate.clone();
     let params = leptos_router::hooks::use_params_map();
@@ -212,14 +193,12 @@ pub fn VideoView() -> impl IntoView {
     /*  Effect: fetch the channel                                   */
     /* ----------------------------------------------------------- */
     Effect::new(move |_| {
-        let nav = navigate_for_fetch.clone();
         set_loading.set(true);
         set_error.set(String::new());
+        let nav = navigate_for_fetch.clone();
 
         spawn_local(async move {
-            let lang_code = crate::get_current_language_code();
-            leptos::logging::log!("lang_code: {}", lang_code);
-            match fetch_files(format!("{}/videos-all", lang_code)).await {
+            match fetch_files(format!("{}/videos-all", locale.to_string())).await {
                 Ok(ch) => {
                     let mut map = HashMap::new();
                     for entry in &ch.entries {
@@ -319,7 +298,7 @@ pub fn VideoView() -> impl IntoView {
             {/* ==== MAIN CONTENT ==== */}
             <div class="container p-4 mx-auto">
                 {move || {
-                    let entries=entries.get();
+                    let entries = entries.get();
                     if loading.get() {
                         // DaisyUI spinner
                         view! {

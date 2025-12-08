@@ -1,4 +1,4 @@
-use crate::models::auth::*;
+use crate::models::{auth::*, files::FolderShare};
 use axum::http::StatusCode;
 use base64::Engine;
 use chrono::Utc;
@@ -13,24 +13,24 @@ use std::time::{Duration, Instant};
 use tracing;
 
 struct CachedJWKS {
-    jwks: JWKS,
-    fetched_at: Instant,
+  jwks: JWKS,
+  fetched_at: Instant,
 }
 
 lazy_static! {
-    static ref JWKS_CACHE: Arc<RwLock<Option<CachedJWKS>>> = Arc::new(RwLock::new(None));
+  static ref JWKS_CACHE: Arc<RwLock<Option<CachedJWKS>>> = Arc::new(RwLock::new(None));
 }
 
 async fn get_jwks(keycloak_url: &str, realm: &str, http_client: &Client) -> Result<JWKS, StatusCode> {
     // Check cache
-    {
-        let cache = JWKS_CACHE.read().await;
-        if let Some(cached) = &*cache {
-            if cached.fetched_at.elapsed() < Duration::from_secs(14400) { // 4 hours
-                return Ok(cached.jwks.clone());
-            }
-        }
+  {
+    let cache = JWKS_CACHE.read().await;
+    if let Some(cached) = &*cache {
+      if cached.fetched_at.elapsed() < Duration::from_secs(14400) { // 4 hours
+        return Ok(cached.jwks.clone());
+      }
     }
+  }
 
     // Fetch new
     let jwks_url = format!("{}/realms/{}/protocol/openid-connect/certs", keycloak_url, realm);
@@ -56,21 +56,18 @@ async fn get_jwks(keycloak_url: &str, realm: &str, http_client: &Client) -> Resu
 }
 
 pub async fn authenticate(
-    keycloak_url: &str,
-    realm: &str,
-    client_id: &str,
-    client_secret: &str,
+    state: crate::AppState,
     auth_req: AuthRequest,
     http_client: &Client,
 ) -> Result<AuthResponse, (StatusCode, String)> {
     let token_url = format!(
         "{}/realms/{}/protocol/openid-connect/token",
-        keycloak_url, realm
+        state.keycloak_url, state.realm
     );
 
     let mut params = HashMap::new();
-    params.insert("client_id", client_id.to_string());
-    params.insert("client_secret", client_secret.to_string());
+    params.insert("client_id", state.client_id.to_string());
+    params.insert("client_secret", state.client_secret.to_string());
     params.insert("grant_type", "password".to_string());
     params.insert("username", auth_req.username.clone());
     params.insert("password", auth_req.password);
@@ -78,9 +75,7 @@ pub async fn authenticate(
 
     let auth_req_json = serde_json::to_string_pretty(&params).unwrap_or_else(|_| "Failed to serialize".to_string());
     tracing::debug!("Auth request: {}", auth_req_json);
-
     tracing::debug!("Login attempt {} for user: {}", &token_url, auth_req.username);
-
     let response = http_client
         .post(&token_url)
         .form(&params)
@@ -110,12 +105,22 @@ pub async fn authenticate(
         let expires_at = (now + chrono::Duration::seconds(token.expires_in as i64)).to_rfc3339();
         let refresh_expires_at = (now + chrono::Duration::seconds(token.refresh_expires_in as i64)).to_rfc3339();
 
+        let mut folder: Option<FolderShare> = None;
+        if let Some(ref fsId) = claims.default_webdavfs {
+            if !fsId.is_empty(){
+                folder = state.config.folders.get(fsId).cloned();
+                if folder.is_none() {
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Folder {} not found", fsId)));
+                }                
+            }
+        }
         Ok(AuthResponse {
             jwt_token: token.access_token,
             refresh_token: token.refresh_token,
             expires_at,
             refresh_expires_at,
             claims,
+            folder,
         })
     } else {
         let body = response.text().await.unwrap_or_else(|_| "Failed to read response body".to_string());
@@ -190,21 +195,18 @@ pub async fn verify_token(
 }
 
 pub async fn refresh_token(
-    keycloak_url: &str,
-    realm: &str,
-    client_id: &str,
-    client_secret: &str,
+    state: crate::AppState,
     refresh_req: RefreshRequest,
     http_client: &Client,
-) -> Result<AuthResponse, StatusCode> {
+) -> Result<AuthResponse, (StatusCode, String)> {
     let token_url = format!(
         "{}/realms/{}/protocol/openid-connect/token",
-        keycloak_url, realm
+        state.keycloak_url, state.realm
     );
 
     let mut params = HashMap::new();
-    params.insert("client_id", client_id.to_string());
-    params.insert("client_secret", client_secret.to_string());
+    params.insert("client_id", state.client_id.to_string());
+    params.insert("client_secret", state.client_secret.to_string());
     params.insert("grant_type", "refresh_token".to_string());
     params.insert("refresh_token", refresh_req.refresh_token);
 
@@ -213,32 +215,42 @@ pub async fn refresh_token(
         .form(&params)
         .send()
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to send refresh request".to_string()))?;
 
     if response.status().is_success() {
         let token: TokenResponse = response
             .json()
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to parse refresh response".to_string()))?;
 
         // Decode claims
         let claims = decode_jwt_payload_struct(&token.access_token)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to decode JWT claims".to_string()))?;
 
         // Calculate expiration dates
         let now = Utc::now();
         let expires_at = (now + chrono::Duration::seconds(token.expires_in as i64)).to_rfc3339();
         let refresh_expires_at = (now + chrono::Duration::seconds(token.refresh_expires_in as i64)).to_rfc3339();
 
+        let mut folder: Option<FolderShare> = None;
+        if let Some(ref fsId) = claims.default_webdavfs {
+            if !fsId.is_empty(){
+                folder = state.config.folders.get(fsId).cloned();
+                if folder.is_none() {
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Folder {} not found", fsId)));
+                }                
+            }
+        }
         Ok(AuthResponse {
             jwt_token: token.access_token,
             refresh_token: token.refresh_token,
             expires_at,
             refresh_expires_at,
             claims,
+            folder,
         })
     } else {
-        Err(StatusCode::UNAUTHORIZED)
+        Err((StatusCode::UNAUTHORIZED, "Invalid refresh token".to_string()))
     }
 }
 

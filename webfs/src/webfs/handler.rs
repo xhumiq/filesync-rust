@@ -1,28 +1,45 @@
 use axum::{
-    extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
-    body::Body,
-    Json,
+    Json, body::Body, extract::{Path, Request, State}, http::{HeaderMap, Method, StatusCode, Uri, header, request}, response::{IntoResponse, Response}
 };
-use crate::models::files::*;
 use std::path::Path as StdPath;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 use mime_guess;
 use chrono::Utc;
 use serde_json;
+use crate::models::files::*;
+use crate::auth::handler::with_auth;
+use crate::models::auth::*;
+
+pub async fn list_files_root_handler(
+    state: State<crate::AppState>,
+    request: Request,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    list_files_handler(state, Path("/".to_string()), request).await
+}
 
 pub async fn list_files_handler(
     state: State<crate::AppState>,
     Path(path): Path<String>,
-    _headers: HeaderMap,
+    request: Request,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    //with_auth(&state, &headers, |_claims| {
+    let headers = request.headers();
+    let uri = request.uri();
+    with_auth(&state, &headers, "GET", Some(uri.to_string().as_str()),async |identity| {
         let state = state.clone();
         let mut lang = "zh";
         let mut channel_opt: Option<Channel> = None;
         let mut full_path= String::new();
+        let mut base_path = state.base_path.clone();
+        let fsId = identity.file_sys_id();
+        if !fsId.is_empty(){
+            if let Some(folder) = state.config.folders.get(&fsId){
+                base_path = folder.base_file_path.to_string();
+                println!("!!! Folder Found: {}", &base_path);
+            }else{
+                println!("!!! Folder Not Found: {}", &fsId);
+            }
+        }
 
         if path.starts_with("zh/") || path.starts_with("en/") {
             let parts: Vec<&str> = path.split('/').collect();
@@ -42,9 +59,8 @@ pub async fn list_files_handler(
         }
 
         if full_path.is_empty() {
-            full_path = format!("{}/{}", state.base_path, path);
+            full_path = format!("{}/{}", base_path, path);
         }
-
         let path_obj = StdPath::new(&full_path);
 
         if !path_obj.exists() {
@@ -93,19 +109,19 @@ pub async fn list_files_handler(
             channel.set_entries(entries);
 
             let storage = state.storage.lock().unwrap();
-            
+
             match storage.channel_descriptions(channel, state.channel_cache.clone()){
                 Ok((ch, _changed)) => {
                     return Ok(Json(ch).into_response());
                 }
                 Err(e) => {
                     tracing::error!("Error filling descriptions for {}: {}", cache_id, e);
-                    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))));        
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))));
                 }
             }
         } else {
             return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid request"}))));
         }
-    //})
+    }).await
 }
 

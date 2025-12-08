@@ -2,7 +2,7 @@ channels:
   en:
     videos-all:
       title: "ACP GJCC Videos"
-      link: "https:/file.ziongjcc.org/Video"
+      link: "https://file.ziongjcc.org/Video"
       media_link: "https://file-jp.ziongjcc.org/Video"
       description: "GJCC Spritual Flow - All Videos"
       category: "Christian"
@@ -17,7 +17,7 @@ channels:
       image_link: "http://example.com"
     videos-chi:
       title: "Chinese Compressed Videos"
-      link: "https:/file.ziongjcc.org/Compressed/chinese"
+      link: "https://file.ziongjcc.org/Compressed/chinese"
       media_link: "https://file-jp.ziongjcc.org/Compressed/chinese"
       description: "GJCC Spritual Flow - Chinese Compressed Videos"
       category: "Christian"
@@ -32,7 +32,7 @@ channels:
       filter_extension: ".mp4"
     videos-chieng:
       title: "Chi/Eng Compressed Videos"
-      link: "https:/file.ziongjcc.org/Compressed/chieng"
+      link: "https://file.ziongjcc.org/Compressed/chieng"
       media_link: "https://file-jp.ziongjcc.org/Compressed/chieng"
       description: "GJCC Spritual Flow - Chi/Eng Compressed Videos"
       category: "Christian"
@@ -47,7 +47,7 @@ channels:
       filter_extension: ".mp4"
     videos-eng:
       title: "English Compressed Videos"
-      link: "https:/file.ziongjcc.org/Compressed/english"
+      link: "https://file.ziongjcc.org/Compressed/english"
       media_link: "https://file-jp.ziongjcc.org/Compressed/english"
       description: "GJCC Spritual Flow - English Compressed Videos"
       category: "Christian"
@@ -62,7 +62,7 @@ channels:
       filter_extension: ".mp4"
     audio-chi:
       title: "ACP GJCC Chinese Audio"
-      link: "https:/file.ziongjcc.org/Audio/chinese"
+      link: "https://file.ziongjcc.org/Audio/chinese"
       media_link: "https://file-jp.ziongjcc.org/Audio/chinese"
       description: "GJCC Spritual Flow - Chinese Audio"
       category: "Christian"
@@ -77,7 +77,7 @@ channels:
       filter_extension: ".mp3"
     audio-eng:
       title: "ACP GJCC English Audio"
-      link: "https:/file.ziongjcc.org/Audio/english"
+      link: "https://file.ziongjcc.org/Audio/english"
       media_link: "https://file-jp.ziongjcc.org/Audio/english"
       description: "GJCC Spritual Flow - English Audio"
       category: "Christian"
@@ -93,7 +93,7 @@ channels:
   zh:
     videos-all:
       title: "新約教會 錄影檔"
-      link: "https:/file.ziongjcc.org/Video"
+      link: "https://file.ziongjcc.org/Video"
       media_link: "https://file-jp.ziongjcc.org/Video"
       description: "ACP GJCC 新約教會 錄影檔"
       category: "Christian"
@@ -108,7 +108,7 @@ channels:
       filter_extension: ".mp4"
     video-chi:
       title: "ACP GJCC 新約教會 壓縮 錄影檔"
-      link: "https:/file.ziongjcc.org/Compressed/chinese"
+      link: "https://file.ziongjcc.org/Compressed/chinese"
       media_link: "https://file-jp.ziongjcc.org/Compressed/chinese"
       description: "GJCC Spritual Flow - 新約教會 壓縮 錄影檔"
       category: "Christian"
@@ -123,7 +123,7 @@ channels:
       filter_extension: ".mp4"
     audio-chi:
       title: "新約教會 錄音檔"
-      link: "https:/file.ziongjcc.org/Audio/chinese"
+      link: "https://file.ziongjcc.org/Audio/chinese"
       media_link: "https://file-jp.ziongjcc.org/Audio/chinese"
       description: "ACP GJCC 新約教會 錄音檔"
       category: "Christian"
@@ -136,3 +136,19 @@ channels:
       image: "http://example.com/image.jpg"
       image_link: "http://example.com"
       filter_extension: ".mp3"
+  fr:
+    mt-tabor:
+      title : "Services sur le Mont Thabor"
+      link: "https://file.ziongjcc.org"
+      media_link: "https://file-jp.ziongjcc.org"
+      description: "Enregistrements des Service du Mont Thabor"
+      category: "Christian" 
+      language: "fr-pf"
+      author: "GJCC"
+      generator: "rss_writer"
+      server_name: "file-jp"
+      file_path: "/srv/aux/mttabor/video"
+      output_path: "/srv/media/rss/mttabor.rss"
+      image: "http://example.com/image.jpg"
+      image_link: "http://example.com"
+      filter_extension: ".mp4"

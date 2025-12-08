@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use chrono::{Datelike, NaiveDate, Utc};
 use std::collections::HashMap;
+use crate::i18n::{Locale};
+use crate::langs::{get_locale, month_name};
 
 #[component]
 pub fn Calendar(
@@ -10,56 +12,7 @@ pub fn Calendar(
     let today = Utc::now().date_naive();
     let default_date = available_dates.as_ref().and_then(|map| map.keys().max().cloned()).unwrap_or(today);
     let (current_date, set_current_date) = signal(default_date);
-
-    let month_name = |month: u32| -> &'static str {
-        match crate::get_current_language_code().as_str() {
-            "zh" => match month {
-                1 => "一月",
-                2 => "二月",
-                3 => "三月",
-                4 => "四月",
-                5 => "五月",
-                6 => "六月",
-                7 => "七月",
-                8 => "八月",
-                9 => "九月",
-                10 => "十月",
-                11 => "十一月",
-                12 => "十二月",
-                _ => "",
-            },
-            "fr" => match month {
-                1 => "Janvier",
-                2 => "Février",
-                3 => "Mars",
-                4 => "Avril",
-                5 => "Mai",
-                6 => "Juin",
-                7 => "Juillet",
-                8 => "Août",
-                9 => "Septembre",
-                10 => "Octobre",
-                11 => "Novembre",
-                12 => "Décembre",
-                _ => "",
-            },
-            _ => match month {
-                1 => "January",
-                2 => "February",
-                3 => "March",
-                4 => "April",
-                5 => "May",
-                6 => "June",
-                7 => "July",
-                8 => "August",
-                9 => "September",
-                10 => "October",
-                11 => "November",
-                12 => "December",
-                _ => "",
-            },
-        }
-    };
+    let (i18n, locale) = get_locale();
 
     let days_in_month = move |year: i32, month: u32| -> u32 {
         let next_month = if month == 12 { 1 } else { month + 1 };
@@ -70,6 +23,11 @@ pub fn Calendar(
 
     let first_day_of_month = move |year: i32, month: u32| -> u32 {
         NaiveDate::from_ymd_opt(year, month, 1).expect("Invalid date for first of month").weekday().num_days_from_sunday()
+    };
+
+    let month_name = move |year: i32, month: u32| -> String {
+        let name = month_name(locale, month as usize).unwrap_or("Unknown");
+        format!("{} {}", name, year)
     };
 
     view! {
@@ -92,7 +50,7 @@ pub fn Calendar(
                 <h3 class="text-lg font-semibold">
                     {move || {
                         let date = current_date.get();
-                        format!("{} {}", month_name(date.month()), date.year())
+                        month_name(date.year(), date.month())
                     }}
                 </h3>
                 <button
@@ -114,9 +72,9 @@ pub fn Calendar(
             <div class="grid grid-cols-7 gap-1 days-grid">
                 // Day headers
                 {
-                    let days = match crate::get_current_language_code().as_str() {
-                        "zh" => ["日", "一", "二", "三", "四", "五", "六"],
-                        "fr" => ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
+                    let days = match locale {
+                        Locale::en => ["日", "一", "二", "三", "四", "五", "六"],
+                        Locale::fr => ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"],
                         _ => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
                     };
                     days.into_iter().map(|day| view! {

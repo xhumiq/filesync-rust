@@ -1,15 +1,21 @@
 use gloo_net::http::Request;
 use anyhow::{anyhow, Result as AnyhowResult};
+use leptos_i18n::I18nContext;
 use crate::models::channel::Channel;
+use crate::models::auth::*;
+use crate::storage::{get_jwt_token};
+use crate::i18n::{use_i18n, I18nKeys, Locale, t_string};
 
-pub fn get_api_file_listing_url() -> String {
-    match option_env!("API_FILE_LISTING_URL") { Some(s) => s.to_string(), None => "/fs/v1".to_string() }
+fn get_api_login_url() -> String {
+  match option_env!("API_LOGIN_URL") { Some(s) => s.to_string(), None => "/auth/v1/login".to_string() }
 }
 
-pub fn get_jwt_token() -> Option<String> {
-    web_sys::window()
-        .and_then(|w| w.local_storage().ok().flatten())
-        .and_then(|s| s.get_item("jwt_token").ok().flatten())
+fn get_api_refresh_token_url() -> String {
+  match option_env!("API_REFRESH_TOKEN_URL") { Some(s) => s.to_string(), None => "/auth/v1/refresh".to_string() }
+}
+
+pub fn get_api_file_listing_url() -> String {
+  match option_env!("API_FILE_LISTING_URL") { Some(s) => s.to_string(), None => "/fs/v1".to_string() }
 }
 
 pub async fn fetch_files(path: String) -> AnyhowResult<Channel> {
@@ -72,6 +78,47 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+pub async fn login(i18n: I18nContext<Locale, I18nKeys>, email: &str, password: &str) -> AnyhowResult<AuthResponse> {
+    let body = serde_json::json!({
+        "username": email.trim(),
+        "password": password.trim(),
+    });
+
+    match Request::post(&get_api_login_url())
+        .header("Content-Type", "application/json")
+        .json(&body)
+    {
+        Ok(request) => {
+            match request.send().await {
+                Ok(resp) => {
+                    if resp.ok() {
+                        match resp.json::<AuthResponse>().await {
+                            Ok(login_resp) => {
+                                leptos::logging::log!("Login successful: {}", &email);
+                                Ok(login_resp)
+                            }
+                            Err(e) => {
+                                leptos::logging::error!("Failed to parse login response: {:?}", e);
+                                Err(anyhow!(t_string!(i18n, invalid_response).to_string()))
+                            }
+                        }
+                    } else {
+                        leptos::logging::error!("Login failed with status: {}", resp.status());
+                        Err(anyhow!(t_string!(i18n, invalid_credentials).to_string()))
+                    }
+                }
+                Err(e) => {
+                    leptos::logging::error!("Network error: {:?}", e);
+                    Err(anyhow!(t_string!(i18n, network_error).to_string()))
+                }
+            }
+        }
+        Err(e) => {
+            leptos::logging::error!("Failed to create request: {:?}", e);
+            Err(anyhow!(t_string!(i18n, request_error).to_string()))
+        }
+    }
+}
 
 // fn list_weeks_in_range(start_date: NaiveDate, end_date: NaiveDate) -> Vec<(NaiveDate, NaiveDate)> {
 //     let mut weeks = Vec::new();
@@ -102,3 +149,45 @@ pub fn format_size(bytes: u64) -> String {
 //     weeks.reverse();
 //     weeks
 // }
+
+pub async fn refresh_token_request(refresh_token: String)-> AnyhowResult<AuthResponse> {
+  let body = serde_json::json!({
+    "refresh_token": refresh_token,
+  });
+  leptos::logging::log!("Refresh Token Request");
+  let i18n = use_i18n();
+  match Request::post(&get_api_refresh_token_url())
+    .header("Content-Type", "application/json")
+    .json(&body)
+  {
+    Ok(request) => {
+      match request.send().await {
+        Ok(resp) => {
+          if resp.ok() {
+            match resp.json::<AuthResponse>().await {
+              Ok(login_resp) => {
+                leptos::logging::log!("Token refresh successful");
+                Ok(login_resp)
+              }
+              Err(e) => {
+                leptos::logging::error!("Failed to parse refresh response: {:?}", e);
+                Err(anyhow!(t_string!(i18n, invalid_response).to_string()))
+              }
+            }
+          } else {
+            leptos::logging::error!("Token refresh failed with status: {}", resp.status());
+            Err(anyhow!(t_string!(i18n, invalid_credentials).to_string()))
+          }
+        }
+        Err(e) => {
+          leptos::logging::error!("Network error during token refresh: {:?}", e);
+          Err(anyhow!(t_string!(i18n, network_error).to_string()))
+        }
+      }
+    }
+    Err(e) => {
+      leptos::logging::error!("Failed to create refresh request: {:?}", e);
+      Err(anyhow!(t_string!(i18n, request_error).to_string()))
+    }
+  }
+}
