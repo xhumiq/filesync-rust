@@ -15,6 +15,7 @@ use crate::pages::audio::AudioView;
 use crate::pages::photos::PhotosView;
 use crate::pages::home::Home;
 use crate::pages::login::Login;
+use crate::pages::login_new::LoginNew;
 use crate::pages::custom::Custom;
 use crate::pages::folder::Folder;
 use crate::pages::not_found::NotFound;
@@ -121,6 +122,7 @@ pub fn App() -> impl IntoView {
                 <Routes fallback=NotFound>
                     <Route path=path!("/") view=PrivateHomeView />
                     <Route path=path!("/account/login") view=Login />
+                    <Route path=path!("/account/login_new") view=LoginNew />
                     <Route path=path!("/ui/videos/*path") view=PrivateVideoView />
                     <Route path=path!("/ui/audio/*path") view=PrivateAudioView />
                     <Route path=path!("/ui/docs/*path") view=PrivateFolderView />

@@ -155,7 +155,6 @@ pub async fn refresh_token_request(refresh_token: String)-> AnyhowResult<AuthRes
     "refresh_token": refresh_token,
   });
   leptos::logging::log!("Refresh Token Request");
-  let i18n = use_i18n();
   match Request::post(&get_api_refresh_token_url())
     .header("Content-Type", "application/json")
     .json(&body)
@@ -171,23 +170,23 @@ pub async fn refresh_token_request(refresh_token: String)-> AnyhowResult<AuthRes
               }
               Err(e) => {
                 leptos::logging::error!("Failed to parse refresh response: {:?}", e);
-                Err(anyhow!(t_string!(i18n, invalid_response).to_string()))
+                Err(anyhow!("Failed to parse refresh response: {:?}", e))
               }
             }
           } else {
             leptos::logging::error!("Token refresh failed with status: {}", resp.status());
-            Err(anyhow!(t_string!(i18n, invalid_credentials).to_string()))
+            Err(anyhow!("Token refresh failed with status: {:?}", resp.status()))
           }
         }
         Err(e) => {
           leptos::logging::error!("Network error during token refresh: {:?}", e);
-          Err(anyhow!(t_string!(i18n, network_error).to_string()))
+          Err(anyhow!("Network error during token refresh: {:?}", e))
         }
       }
     }
     Err(e) => {
       leptos::logging::error!("Failed to create refresh request: {:?}", e);
-      Err(anyhow!(t_string!(i18n, request_error).to_string()))
+      Err(anyhow!("Failed to create refresh request: {:?}", e))
     }
   }
 }

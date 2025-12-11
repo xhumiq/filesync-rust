@@ -34,6 +34,7 @@ pub fn Login() -> impl IntoView {
     });
 
     let on_submit = move |ev: leptos::ev::SubmitEvent| {
+        let state = app_state.clone();
         ev.prevent_default();
         set_error_message.set(String::new());
 
@@ -69,13 +70,13 @@ pub fn Login() -> impl IntoView {
         spawn_local(async move {
             match login(i18n, &email_val, &password_val).await {
                 Ok(login_resp) => {
-                    app_state.auth.set(Some(login_resp.clone()));
+                    state.auth.set(Some(login_resp.clone()));
                     if let Err(e) = store_auth(&login_resp) {
                         leptos::logging::error!("Failed to store auth: {:?}", e);
                     }
                     if let Some(refresh) = login_resp.refresh_token.clone() {
                         let local_expires = utc_to_local(&login_resp.expires_at);
-                        schedule_refresh_token(refresh, local_expires);
+                        schedule_refresh_token(&state, refresh, local_expires);
                     }
                     // Redirect to home page
                     if let Some(window) = web_sys::window() {

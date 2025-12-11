@@ -1,5 +1,4 @@
-use crate::models::{auth::*, files::FolderShare};
-use axum::http::StatusCode;
+use axum::{http::{StatusCode, Uri}, response::Json};
 use base64::Engine;
 use chrono::Utc;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
@@ -11,6 +10,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::time::{Duration, Instant};
 use tracing;
+
+use crate::models::{auth::*, files::FolderShare};
 
 struct CachedJWKS {
   jwks: JWKS,
@@ -57,7 +58,7 @@ async fn get_jwks(keycloak_url: &str, realm: &str, http_client: &Client) -> Resu
 
 pub async fn authenticate(
     state: crate::AppState,
-    auth_req: AuthRequest,
+    auth_req: BasicAuthRequest,
     http_client: &Client,
 ) -> Result<AuthResponse, (StatusCode, String)> {
     let token_url = format!(
@@ -276,4 +277,62 @@ fn decode_jwt_payload(token: &str) -> Result<String, Box<dyn std::error::Error>>
     let decoded = engine.decode(payload)?;
     let claims: Value = serde_json::from_slice(&decoded)?;
     Ok(serde_json::to_string_pretty(&claims)?)
+}
+
+pub async fn check_auth(state: &crate::AppState, request: &AuthRequest) -> Result<AuthIdentity, (StatusCode, Json<serde_json::Value>)>{
+    if !request.jwt_token.is_none() {
+        let jwt_token = request.jwt_token.as_ref().unwrap();
+        let active = verify_token(
+            &state.keycloak_url,
+            &state.realm,
+            &request.jwt_token.as_ref().unwrap(),
+            &state.http_client,
+        )
+        .await
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "token verification failed"}))))?;
+
+        if !active {
+            return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "token inactive"}))));
+        }
+
+        let claims = decode_jwt_payload_struct(&jwt_token)
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "failed to decode claims"}))))?;
+        return Ok(AuthIdentity::Claims(claims))
+    }
+    let basic_auth = request.basic_auth();
+    if let Some(basic_auth) = basic_auth {
+        match authenticate(
+            state.clone(),
+            basic_auth,
+            &state.http_client,
+        ).await {
+            Ok(auth_resp) => {
+                return Ok(AuthIdentity::Claims(auth_resp.claims))
+            }
+            Err((status, msg)) => {
+                return Err((status, Json(serde_json::json!({"error": msg}))))
+            }
+        }
+    }
+    if let (Some(uri), Some(method)) = (request.url.as_ref(), request.method.as_ref()) {
+        let uri_obj = Uri::try_from(uri).unwrap();
+        match SignUrlResponse::from_url(&method, uri){
+            Ok(resp) => {
+                match state.signing_keys.lock().unwrap().verify_signed_url(&resp) {
+                    Ok(_) => {
+                        let query = uri_obj.query().unwrap_or("");
+                        let fsid = query.split('&').find(|p| p.starts_with("fsid=")).and_then(|p| p.split('=').nth(1)).unwrap_or("").to_string();
+                        return Ok(AuthIdentity::FileSysID(fsid))
+                    }
+                    Err(e) => {
+                        return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": e.to_string()}))))
+                    }
+                }
+            }
+            Err(e) => {
+                return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": e.to_string()}))))
+            }
+        }
+    }
+    return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "no token"}))));
 }

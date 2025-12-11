@@ -128,6 +128,11 @@ fn file_list_view(path: &str, entries: Vec<MediaEntry>) -> AnyView {
 #[component]
 pub fn Custom() -> impl IntoView {
     let (i18n, locale) = get_locale();
+    let (channel, set_channel) = signal(Option::<Channel>::None);
+    let (loading, set_loading) = signal(false);
+    let (error, set_error) = signal(String::new());
+    let (_weeks, _set_weeks) = signal(Option::<Vec<(NaiveDate, NaiveDate)>>::None);
+
     let navigate = use_navigate();
     let navigate_for_fetch = navigate.clone();
     let params = leptos_router::hooks::use_params_map();
@@ -137,14 +142,11 @@ pub fn Custom() -> impl IntoView {
             .unwrap_or_default()
     };
     let folder = use_folder();
-    if folder.get().is_none() {
-        navigate("/files", Default::default());
-    }
-
-    let (channel, set_channel) = signal(Option::<Channel>::None);
-    let (loading, set_loading) = signal(false);
-    let (error, set_error) = signal(String::new());
-    let (_weeks, _set_weeks) = signal(Option::<Vec<(NaiveDate, NaiveDate)>>::None);
+    Effect::new(move |_| {
+        if folder.get().is_none() {
+            navigate("/files", Default::default());
+        }
+    });
 
     /* ----------------------------------------------------------- */
     /*  Effect: fetch whenever the route path changes               */

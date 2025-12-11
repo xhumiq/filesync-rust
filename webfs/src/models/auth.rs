@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
+use axum::{extract::{}, http::{Uri, request, header::HeaderMap}};
 use super::files::FolderShare;
 use hmac::{Hmac, Mac};
 use nanoid::nanoid;
@@ -28,8 +29,62 @@ pub struct TokenResponse {
     pub id_token: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthRequest {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub jwt_token: Option<String>,
+    pub method: Option<String>,
+    pub url: Option<String>,
+}
+
+impl AuthRequest {
+    pub fn new(uri: &Uri, method: &str, headers: &HeaderMap) -> AuthRequest {
+        let mut auth = AuthRequest {
+            username: None,
+            password: None,
+            jwt_token: None,
+            method: Some(method.to_string()),
+            url: Some(uri.to_string()),
+        };
+        let auth_header = headers
+            .get("authorization")
+            .and_then(|h| h.to_str().ok());
+        auth.jwt_token = auth_header.clone().and_then(|h| h.strip_prefix("Bearer ").map(|s| s.to_string()));
+        if auth.jwt_token.is_none() {
+            let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
+            if let Some(cookie_str) = cookie_header {
+                for cookie in cookie_str.split(';') {
+                    let cookie = cookie.trim();
+                    if let Some(token) = cookie.strip_prefix("jwt_token=") {
+                        auth.jwt_token = Some(token.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+        if let Some(decoded) = auth_header
+            .and_then(|h| h.strip_prefix("Basic "))
+            .and_then(|h| general_purpose::STANDARD.decode(h).ok())
+            .and_then(|h| String::from_utf8(h).ok()) {
+            if let Some((user, pass)) = decoded.split_once(':') {
+                auth.username = Some(user.to_string());
+                auth.password = Some(pass.to_string());
+            }
+        }
+        auth
+    }
+    pub fn basic_auth(&self) -> Option<BasicAuthRequest> {
+        if let (Some(username), Some(password)) = (&self.username, &self.password) {
+            Some(BasicAuthRequest { username: username.clone(), password: password.clone() })
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BasicAuthRequest {
     pub username: String,
     pub password: String,
 }
@@ -153,7 +208,7 @@ impl SignUrlRequest {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignUrlResponse {
     pub id: String,
     pub url: String,
@@ -464,6 +519,7 @@ impl HmacSigningKey {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub enum AuthIdentity {
     Claims(Claims),
     FileSysID(String),

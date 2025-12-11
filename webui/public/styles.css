@@ -36,7 +36,7 @@ body {
 
 @font-face {
   font-family: 'Inter';
-  src: url('/fonts/inter-regular.woff') format('woff'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+  src: url('/fonts/inter-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
   font-style: normal;
   font-weight: 400;
   font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
@@ -47,14 +47,6 @@ body {
   src: url('/fonts/taipei-sans-regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'TaipeiSans'; /* You can name this whatever you like */
-  src: url('/fonts/taipei-sans-bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: bold;
   font-display: swap;
 }
 
@@ -71,14 +63,6 @@ body {
   src: url('/fonts/georgia.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Georgia'; /* You can name this whatever you like */
-  src: url('/fonts/georgia-bold.woff2') format('woff2');
-  font-weight: 700;
-  font-style: bold;
   font-display: swap;
 }
 
