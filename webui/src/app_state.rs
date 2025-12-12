@@ -2,6 +2,7 @@ use leptos::*;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos_use::{use_cookie, use_cookie_with_options, UseCookieOptions, SameSite};
+use wasm_bindgen::prelude::*;
 use codee::string::FromToStringCodec;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, FixedOffset, Utc};
@@ -21,6 +22,16 @@ pub struct AppState {
   pub domain: String,
   pub auth: RwSignal<Option<AuthResponse>>,
   pub scheduled_refresh: RwSignal<Option<i32>>,
+  pub width: ReadSignal<i32>,
+}
+
+impl AppState {
+  pub fn width(&self) -> i32 {
+    self.width.get()
+  }
+  pub fn is_mobile(&self) -> bool {
+    self.width.get() < 768
+  }
 }
 
 pub fn provide_app_state() {
@@ -32,14 +43,28 @@ pub fn provide_app_state() {
          .and_then(|w| w.location().host().ok())
          .unwrap_or_else(|| "localhost".to_string())
    };
+   let (width, set_width) = signal(0);
    let auth = RwSignal::new(None);
    let scheduled_refresh = RwSignal::new(None);
    let state = AppState {
      domain,
      auth,
-     scheduled_refresh
+     scheduled_refresh,
+     width,
    };
-   provide_context(state.clone());
+   Effect::new(move |_| {
+     if let Some(win) = web_sys::window() {
+       let win_clone = win.clone();
+       let closure = Closure::wrap(Box::new(move || {
+         if let Some(w) = win_clone.inner_width().ok() {
+           set_width.set(w.as_f64().unwrap_or(0.0) as i32);
+         }
+       }) as Box<dyn FnMut()>);
+       win.add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref()).unwrap();
+       closure.forget();  // Keep closure alive
+     }
+   });
+  provide_context(state.clone());
   let auth = get_auth_from_store();
   if let Some(auth) = auth {
     match set_auth_response(&state, Some(auth)){
@@ -78,6 +103,7 @@ pub fn set_auth_response(state: &AppState, response: Option<AuthResponse>) -> Re
   state.auth.set(response.clone());
   match response {
     Some(resp) => {
+      let resp_c = resp.clone();
       store_auth(&resp)?;
       set_cookie("jwt_token", &resp.jwt_token, 0);
       let local_expires = utc_to_local(&resp.expires_at);
@@ -188,8 +214,6 @@ pub fn logout(state: &AppState) {
     state.scheduled_refresh.set(None);
 }
 
-
-
 pub fn schedule_refresh_token(state: &AppState, refresh_token: String, expires_at: DateTime<FixedOffset>) {
   if let Some(window) = web_sys::window() {
     let closure = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
@@ -202,6 +226,7 @@ pub fn schedule_refresh_token(state: &AppState, refresh_token: String, expires_a
           },
           Err(e) => {
             leptos::logging::error!("Failed to refresh token: {}", e);
+            clear_tokens();
             if let Some(window) = web_sys::window() {
                 if let Some(_location) = window.location().href().ok() {
                     let _ = window.location().set_href("/account/login");

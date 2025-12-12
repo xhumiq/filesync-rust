@@ -131,3 +131,9 @@ h3.card-title{
   width: 20px;
   height: 20px;
 }
+
+@media (max-width: 767px) {
+  #home-menu h2{
+    display: none;
+  }
+}

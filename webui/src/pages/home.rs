@@ -13,7 +13,7 @@ pub fn Home() -> impl IntoView {
         <MainTopNav />
         
         {/* Main Content */}
-        <div class="container p-4 mx-auto">
+        <div id="home-menu" class="container p-4 mx-auto">
             <div class="text-center">
                 <h2 class="pb-2 mb-12 text-6xl font-bold text-gray-800 border-b-4 border-yellow-500 w-fit" style="font-family: 'Georgia';">
                     {t!(i18n, site_title)}
