@@ -84,18 +84,23 @@ async fn fill_and_queue_channels(channels_to_process: &[(String, Channel)], tx: 
         tracing::info!("Filling channel {} {}", ch.cache_id(), &ch.file_path);
 
         // Read and filter files from the directory
-        let entries = Channel::read_dir(&ch)?;
-        if entries.is_empty() {
-            tracing::warn!("No entries found for channel {}", channel_name);
-            continue;
-        }
-
-        // Process entries
-        let mut ch = ch.clone();
-        ch.set_entries(entries);
-
-        if let Err(e) = tx.send((channel_name.clone(), ch.clone())).await {
-            tracing::error!("Failed to send channel {} to queue: {}", channel_name, e);
+        match Channel::read_dir(&ch) {
+            Ok(entries) => {
+                if entries.is_empty() {
+                    tracing::warn!("No entries found for channel {}", channel_name);
+                    continue;
+                }
+                // Process entries
+                let mut ch = ch.clone();
+                ch.set_entries(entries);
+                if let Err(e) = tx.send((channel_name.clone(), ch.clone())).await {
+                    tracing::error!("Failed to send channel {} to queue: {}", channel_name, e);
+                }
+            },
+            Err(e) => {
+                tracing::error!("Error reading directory for channel {}: {}", channel_name, e);
+                continue;
+            }
         }
     }
     Ok(())

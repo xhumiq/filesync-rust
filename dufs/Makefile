@@ -28,21 +28,22 @@ build:
 release:
 	cargo build --release
 
-pod-build:
-	@echo "Build Image Caddy Version: ${CADDY_VERSION} ${BUILD_PATH}" \
-	; cd ../../ \
-	; pwd \
-	; podman build . --cache-ttl=0 --pull -t caddy:${CADDY_VERSION} \
-	  --file ./plugins/caddy-keycloak/Dockerfile \
-		&& podman tag caddy:${CADDY_VERSION} caddy:latest \
-		&& podman tag caddy:${CADDY_VERSION} caddy \
-		&& echo Set caddy:${CADDY_VERSION} to latest
+pod-push: pod-build ecr-push
 
-aws_login:
+pod-build:
+	@echo "Build Image DUFS Version: v${BUILD_VER} ${BUILD_PATH}" \
+	; podman build . --cache-ttl=0 --pull -t dufs:v${BUILD_VER} \
+	  --file Dockerfile-ecr-rel \
+		&& podman run -it --rm -v ${BUILD_PATH}:/app dufs:v${BUILD_VER} cp /bin/dufs /app/dufs-v${BUILD_VER} \
+		&& podman tag dufs:v${BUILD_VER} dufs:latest \
+		&& podman tag dufs:v${BUILD_VER} dufs \
+		&& echo Set dufs:v${BUILD_VER} to latest
+
+aws-login:
 	@aws ecr get-login-password --region ${AWS_ECR_REGION} | \
 		podman login --username AWS --password-stdin ${docker_reg}
 
-ecr_push: aws_login
-	@echo "BUILD_VER=${CADDY_VERSION}"
-	podman push caddy:${CADDY_VERSION} ${docker_reg}/auth/caddy:${CADDY_VERSION}
-	podman push caddy:${CADDY_VERSION} ${docker_reg}/auth/caddy:latest
+ecr-push: aws-login
+	@echo "Pushing Image DUFS dufs:v${BUILD_VER}"
+	podman push dufs:v${BUILD_VER} ${AWS_DOCKER_REG}/fserve/dufs:v${BUILD_VER}
+	podman push dufs:v${BUILD_VER} ${AWS_DOCKER_REG}/fserve/dufs:latest

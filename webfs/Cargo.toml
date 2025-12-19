@@ -16,6 +16,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
+openssl = { version = "0.10", features = ["vendored"] }
 dotenv = "0.15"
 jsonwebtoken = "9"
 serde_json = "1.0"
@@ -63,3 +64,15 @@ path = "src/cli/utils/main.rs"
 [build-dependencies]
 built = { version = "0.8", features = ["git2"] }
 vergen-git2 = { version = "1.0.0", features = ["build", "cargo", "rustc", "si"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true        # this is the key line!
+strip = false       # don't remove symbols

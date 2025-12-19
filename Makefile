@@ -18,7 +18,6 @@ include ${DEVOPS_PATH}/scripts/utils.mk
 
 pod-dav:
 	@cd dufs \
-	&& signed_url=$$(s3cmd -c "${S3_DEPLOY_PROFILE}" signurl "${S3_DEPLOY_PATH}/dufs/dufs-v${BUILD_VER}.zst" +86400) \
 	&& podman build --build-arg SIGNED_URL=$${signed_url} --build-arg FILE_NAME=dufs-v${BUILD_VER}.zst -t dufs:${BUILD_VER} -f Dockerfile-ecr-rel .
 
 ecr-dav: pod-dav aws-login
@@ -40,22 +39,36 @@ dep-dav:
 		cp ${PACKAGE_FOLDER}/dufs-latest.zst ${S3_DEPLOY_PATH}/dufs/dufs-v${BUILD_VER}.zst
 
 dep-ui:
-	$(MAKE) deploy-ui proj=webui
+	$(MAKE) deploy-ui proj=webui apihost=${apihost}
 
 deploy-ui:
-	cd webui \
-	&& ${MAKE} release
+	cd webui && rm -rf dist/release dist/webui \
+	&& ${MAKE} release apihost=${apihost}
 	mkdir -p ${PACKAGE_FOLDER}
-	rm -f ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst
-	rm -f ${PACKAGE_FOLDER}/webui-latest.tar.zst
+	rm -f ${PACKAGE_FOLDER}/webui-${apihost}-v${BUILD_VER}.tar.zst
+	rm -f ${PACKAGE_FOLDER}/webui-${apihost}-latest.tar.zst
 	cd webui/dist \
-	&& tar -I zstd -cvf ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst release
-	cp ${PACKAGE_FOLDER}/webui-v${BUILD_VER}.tar.zst ${PACKAGE_FOLDER}/webui-latest.tar.zst
+	&& rm -rf webui && mv release webui \
+	&& tar -I zstd -cvf ${PACKAGE_FOLDER}/webui-${apihost}-v${BUILD_VER}.tar.zst webui \
+	&& rm -rf release && mv webui release
+	cp ${PACKAGE_FOLDER}/webui-${apihost}-v${BUILD_VER}.tar.zst ${PACKAGE_FOLDER}/webui-${apihost}-latest.tar.zst
 	ls -al ${PACKAGE_FOLDER}
 	s5cmd --endpoint-url ${S3_URL} \
 		--profile deploy \
 		--credentials-file ${HOME}/.config/cloud-cli/.linode \
-		cp ${PACKAGE_FOLDER}/webui-latest.tar.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-v${BUILD_VER}.zst
+		cp ${PACKAGE_FOLDER}/webui-${apihost}-latest.tar.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-${apihost}-v${BUILD_VER}.zst
+	s5cmd --endpoint-url ${S3_URL} \
+		--profile deploy \
+		--credentials-file ${HOME}/.config/cloud-cli/.linode \
+		cp ${PACKAGE_FOLDER}/webui-${apihost}-latest.tar.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-${apihost}-latest.zst
+	s5cmd --endpoint-url ${S3_URL} \
+		--profile deploy \
+		--credentials-file ${HOME}/.config/cloud-cli/.linode \
+		cp ${PACKAGE_FOLDER}/webui-${apihost}-latest.tar.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-v${BUILD_VER}.zst
+	s5cmd --endpoint-url ${S3_URL} \
+		--profile deploy \
+		--credentials-file ${HOME}/.config/cloud-cli/.linode \
+		cp ${PACKAGE_FOLDER}/webui-${apihost}-latest.tar.zst ${S3_DEPLOY_PATH}/${APP_PROJ_NAME}/${APP_PROJ_NAME}-latest.zst
 
 dep-fs:
 	$(MAKE) deploy-fs proj=webfs

@@ -1,11 +1,9 @@
-FROM alpine as builder
-ARG SIGNED_URL FILE_NAME
-RUN apk add --no-cache zstd
-RUN wget --no-verbose -O ${FILE_NAME} ${SIGNED_URL} && \
-    zstd -o ./dufs -d ${FILE_NAME} && \
-    mv dufs /bin/
+FROM --platform=linux/amd64 docker.io/messense/rust-musl-cross:x86_64-musl AS builder
+COPY . .
+RUN cargo install --profile release-with-debug --path . --root /
 
-FROM scratch
+FROM alpine
+RUN apk add --no-cache xz-libs libgcc libstdc++ libc6-compat
+COPY --from=builder /usr/lib/lib* /usr/lib/
 COPY --from=builder /bin/dufs /bin/dufs
 STOPSIGNAL SIGINT
-ENTRYPOINT ["/bin/dufs"]

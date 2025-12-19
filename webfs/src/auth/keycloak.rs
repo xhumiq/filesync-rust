@@ -74,8 +74,6 @@ pub async fn authenticate(
     params.insert("password", auth_req.password);
     params.insert("scope", "openid".to_string());
 
-    let auth_req_json = serde_json::to_string_pretty(&params).unwrap_or_else(|_| "Failed to serialize".to_string());
-    tracing::debug!("Auth request: {}", auth_req_json);
     tracing::debug!("Login attempt {} for user: {}", &token_url, auth_req.username);
     let response = http_client
         .post(&token_url)
@@ -107,11 +105,11 @@ pub async fn authenticate(
         let refresh_expires_at = (now + chrono::Duration::seconds(token.refresh_expires_in as i64)).to_rfc3339();
 
         let mut folder: Option<FolderShare> = None;
-        if let Some(ref fsId) = claims.default_webdavfs {
-            if !fsId.is_empty(){
-                folder = state.config.folders.get(fsId).cloned();
+        if let Some(ref fs_id) = claims.default_webdavfs {
+            if !fs_id.is_empty(){
+                folder = state.config.folders.get(fs_id).cloned();
                 if folder.is_none() {
-                    return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Folder {} not found", fsId)));
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Folder {} not found", fs_id)));
                 }                
             }
         }
@@ -146,6 +144,7 @@ pub async fn verify_token(
     // Decode header to get kid
     let header = decode_header(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
     let kid = header.kid.ok_or(StatusCode::UNAUTHORIZED)?;
+    tracing::debug!("Verify JWT Token Kid: {}", kid);
 
     // Find the key
     let key = jwks.keys.into_iter().find(|k| k.kid == kid).ok_or(StatusCode::UNAUTHORIZED)?;
@@ -159,6 +158,7 @@ pub async fn verify_token(
     validation.set_audience(&["account"]);
     validation.validate_exp = false; // We check exp manually
 
+    tracing::debug!("Validation Start: {}", format!("{}/realms/{}", keycloak_url, realm));
     match decode::<Claims>(token, &decoding_key, &validation) {
         Ok(token_data) => {
             // Check expiration manually
@@ -166,6 +166,7 @@ pub async fn verify_token(
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
                 .as_secs() as u64;
+            tracing::debug!("Auth Token Data Claims Exp: {}", token_data.claims.exp.to_string());
             if token_data.claims.exp > now {
                 Ok(true)
             } else {
@@ -173,6 +174,7 @@ pub async fn verify_token(
             }
         }
         Err(e) => {
+            tracing::debug!("Token verification error: {}", e);
             // If signature validation failed, refresh JWKS and try again
             if matches!(e.kind(), jsonwebtoken::errors::ErrorKind::InvalidSignature) {
                 // Clear cache
@@ -234,11 +236,11 @@ pub async fn refresh_token(
         let refresh_expires_at = (now + chrono::Duration::seconds(token.refresh_expires_in as i64)).to_rfc3339();
 
         let mut folder: Option<FolderShare> = None;
-        if let Some(ref fsId) = claims.default_webdavfs {
-            if !fsId.is_empty(){
-                folder = state.config.folders.get(fsId).cloned();
+        if let Some(ref fs_id) = claims.default_webdavfs {
+            if !fs_id.is_empty(){
+                folder = state.config.folders.get(fs_id).cloned();
                 if folder.is_none() {
-                    return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Folder {} not found", fsId)));
+                    return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Folder {} not found", fs_id)));
                 }                
             }
         }
@@ -267,21 +269,10 @@ pub fn decode_jwt_payload_struct(token: &str) -> Result<Claims, Box<dyn std::err
     Ok(claims)
 }
 
-fn decode_jwt_payload(token: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let parts: Vec<&str> = token.split('.').collect();
-    if parts.len() != 3 {
-        return Err("Invalid JWT".into());
-    }
-    let payload = parts[1];
-    let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    let decoded = engine.decode(payload)?;
-    let claims: Value = serde_json::from_slice(&decoded)?;
-    Ok(serde_json::to_string_pretty(&claims)?)
-}
-
 pub async fn check_auth(state: &crate::AppState, request: &AuthRequest) -> Result<AuthIdentity, (StatusCode, Json<serde_json::Value>)>{
     if !request.jwt_token.is_none() {
         let jwt_token = request.jwt_token.as_ref().unwrap();
+        tracing::debug!("Auth JWT token: {}", &jwt_token);
         let active = verify_token(
             &state.keycloak_url,
             &state.realm,
@@ -290,7 +281,7 @@ pub async fn check_auth(state: &crate::AppState, request: &AuthRequest) -> Resul
         )
         .await
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "token verification failed"}))))?;
-
+        
         if !active {
             return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "token inactive"}))));
         }
@@ -321,8 +312,8 @@ pub async fn check_auth(state: &crate::AppState, request: &AuthRequest) -> Resul
                 match state.signing_keys.lock().unwrap().verify_signed_url(&resp) {
                     Ok(_) => {
                         let query = uri_obj.query().unwrap_or("");
-                        let fsid = query.split('&').find(|p| p.starts_with("fsid=")).and_then(|p| p.split('=').nth(1)).unwrap_or("").to_string();
-                        return Ok(AuthIdentity::FileSysID(fsid))
+                        let fs_id = query.split('&').find(|p| p.starts_with("fs_id=")).and_then(|p| p.split('=').nth(1)).unwrap_or("").to_string();
+                        return Ok(AuthIdentity::FileSysID(fs_id))
                     }
                     Err(e) => {
                         return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": e.to_string()}))))

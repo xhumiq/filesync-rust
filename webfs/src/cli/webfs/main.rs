@@ -6,6 +6,7 @@ use axum::{
     Router,
 };
 use tokio::net::{TcpListener, UnixListener};
+use tokio::signal;
 use webfs::AppState;
 use reqwest::Client;
 use tower_http::cors::CorsLayer;
@@ -59,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         url
     };
 
-    let db_path = std::env::var("DB_PATH").unwrap_or("/opt/webdav/data/webfs/webfs.db".to_string());
+    let db_path = std::env::var("DB_PATH").unwrap_or("/srv/data/webfs/files.db".to_string());
 
     tracing::info!("Creating Database path: {}", db_path);
 
@@ -97,7 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Start file monitoring in background
     let watch_path = std::env::var("WATCH_PATH").unwrap_or("".to_string());
-    let rss_outpath = std::env::var("RSS_OUT_PATH").unwrap_or("/srv/rss".to_string());
+    let rss_outpath = std::env::var("RSS_OUT_PATH").unwrap_or("/srv/aux/rss".to_string());
     let file_pattern = std::env::var("FILE_PATTERN").unwrap_or(r"zsv[\d]{6}.*\.docx".to_string());
     let rss_days = std::env::var("RSS_DAYS").unwrap_or("-1".to_string()).parse::<i32>().ok();
 
@@ -154,10 +155,17 @@ async fn serve_tcp(app: Router, port: String) -> Result<(), Box<dyn std::error::
         tracing::error!("Failed to bind TcpListener on port {}: {}", port, e);
         e
     })?;
-    axum::serve(listener, app).await.map_err(|e| {
-        tracing::error!("Failed to serve TCP: {}", e);
-        e
-    })?;
+    tokio::select! {
+        result = axum::serve(listener, app) => {
+            result.map_err(|e| {
+                tracing::error!("Failed to serve TCP: {}", e);
+                e
+            })?;
+        }
+        _ = signal::ctrl_c() => {
+            tracing::info!("Received SIGINT, shutting down TCP server");
+        }
+    }
     Ok(())
 }
 
@@ -169,9 +177,16 @@ async fn serve_unix(app: Router, socket_path: String) -> Result<(), Box<dyn std:
         tracing::error!("Failed to bind UnixListener on {}: {}", socket_path, e);
         e
     })?;
-    axum::serve(listener, app).await.map_err(|e| {
-        tracing::error!("Failed to serve Unix: {}", e);
-        e
-    })?;
+    tokio::select! {
+        result = axum::serve(listener, app) => {
+            result.map_err(|e| {
+                tracing::error!("Failed to serve Unix: {}", e);
+                e
+            })?;
+        }
+        _ = signal::ctrl_c() => {
+            tracing::info!("Received SIGINT, shutting down Unix server");
+        }
+    }
     Ok(())
 }

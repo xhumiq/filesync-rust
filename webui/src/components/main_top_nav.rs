@@ -1,22 +1,23 @@
 use leptos::prelude::*;
+use leptos::reactive::wrappers::write::SignalSetter;
 use leptos_router::components::*;
 use web_sys::window;
 use crate::i18n::{use_i18n, t, Locale};
 use crate::langs::toggle_locale;
 use crate::app_state::{ use_app_state, logout };
+use crate::icons::*;
 
 #[component]
 pub fn MainTopNav() -> impl IntoView {
     let (audio_dropdown_open, set_audio_dropdown_open) = signal(false);
+    let (menu_modal_open, set_menu_modal_open) = signal(false);
 
     let i18n = use_i18n();
     let current_locale = Memo::new(move |_| i18n.get_locale());
     let app_state = use_app_state();
+    let app_state_stored = store_value(app_state.clone());
     let toggle_language = move |_| {
         toggle_locale(i18n, "");
-    };
-    let on_logout = move |_| {
-        logout(&app_state);
     };
     view! {
         {/* ==== TOP BAR ==== */}
@@ -148,12 +149,75 @@ pub fn MainTopNav() -> impl IntoView {
                         }
                     }}
                 </button>
-                <button class="text-white border-white btn btn-outline btn-sm" on:click=on_logout>
+                <button class="text-white border-white btn btn-outline btn-sm" on:click=move |_| {
+                    set_menu_modal_open.update(|open| *open = !*open);
+                }>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1 0 12.728 0M12 3v9" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                     </svg>
                 </button>
             </div>
         </div>
+
+        {/* Mobile Menu Modal */}
+        <Show when=move || menu_modal_open.get()>
+            <div class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                {/* Backdrop */}
+                <div
+                    class="absolute inset-0 bg-black bg-opacity-50"
+                    on:click=move |_| {
+                        set_menu_modal_open.set(false);
+                    }
+                />
+                
+                {/* Modal Content */}
+                <div class="relative w-full max-w-sm max-h-[90vh] overflow-y-auto bg-white shadow-xl rounded-lg">
+                    <div class="flex items-center justify-between border-b border-gray-300" style="position:relative">
+                        <h2 class="p-2 text-xl font-bold">{t!(i18n, site_title)}</h2>
+                        <button class="m-2 text-2xl" style="display:block;position:absolute;right:0;padding-right: 1rem" on:click=move |_| set_menu_modal_open.set(false)>"×"</button>
+                    </div>
+
+                    <div id="menu_modal_items" class="p-4 text-left">
+                        <A href="/ui/videos" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            <span class="icon">{home_icon()}</span>
+                            {t!(i18n, video)}
+                        </A>
+                        <A href="/ui/videos/today" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            <span class="icon">{rss_icon()}</span>
+                            {t!(i18n, compressed_chinese)}
+                        </A>
+                        <A href="/ui/videos/3days" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            <span class="icon">{rss_icon()}</span>
+                            {t!(i18n, compressed_chieng)}
+                        </A>
+                        <A href="/ui/videos/date" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            <span class="icon">{rss_icon()}</span>
+                            {t!(i18n, compressed_english)}
+                        </A>
+                        <A href="/files/Compressed/english" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            {t!(i18n, compressed_english)}
+                        </A>
+                        <A href="/files/Compressed/chinese" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            {t!(i18n, compressed_chinese)}
+                        </A>
+                        <A href="/files/LiteraryCenter/Videos" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            {t!(i18n, video_documentaries)}
+                        </A>
+                        <A href="/ui/audio" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            {t!(i18n, audio)}
+                        </A>
+                        <A href="/ui/photos" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |_| set_menu_modal_open.set(false)>
+                            {t!(i18n, photos)}
+                        </A>
+                        <A href="/account/login" attr::class="block p-2 text-black hover:bg-gray-300 hover:text-white" on:click=move |ev| {
+                            set_menu_modal_open.set(false);
+                            logout(&app_state_stored.get_value());
+                        }>
+                            {t!(i18n, logout)}
+                        </A>
+                    </div>
+                </div>
+            </div>
+        </Show>
     }
 }

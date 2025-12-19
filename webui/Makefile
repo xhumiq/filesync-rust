@@ -13,7 +13,8 @@ release:
 	npm run build-css
 	rm -rf ./dist/release || true
 	mkdir -p ./dist/release
-	cp .env.release .env
+	cp ${ENV_RELEASE} .env
+	sed -i 's|^API_FILE_LISTING_URL=.*|API_FILE_LISTING_URL=https://${apihost}/fs/v1|' .env
 	~/.cargo/bin/trunk build --release -vv --minify --dist ./dist/release
 	cp .env.local .env
 

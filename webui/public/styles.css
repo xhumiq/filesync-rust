@@ -132,6 +132,25 @@ h3.card-title{
   height: 20px;
 }
 
+#menu_modal_items .icon{
+  width: 1rem;
+  height: 1rem;
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+#menu_modal_items a{
+  display: block;
+  margin-left: 1rem;
+}
+
+#menu_modal_items a:hover{
+  background-color: #253f73;
+  color: #f3f4f6;
+  text-decoration: none;
+  display: block;
+}
+
 @media (max-width: 767px) {
   #home-menu h2{
     display: none;

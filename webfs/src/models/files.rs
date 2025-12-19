@@ -238,6 +238,9 @@ impl Channel {
                     let relative = channel.file_path.strip_prefix(&config.default.base_file_path).unwrap_or(&channel.file_path).trim_start_matches('/');
                     channel.media_link = format!("https://{}.{}{}{}", channel.server_name, config.default.domain, config.default.base_media_url, relative);
                 }
+                if channel.media_link.starts_with("/") {
+                    channel.media_link = format!("https://{}.{}{}{}", channel.server_name, config.default.domain, config.default.base_media_url, &channel.media_link.trim_start_matches('/'));
+                }
                 if channel.link.is_empty() {
                     channel.link = channel.media_link.clone();
                 }
@@ -407,12 +410,18 @@ impl Channel {
         tracing::info!("Writing RSS for channel {} to {}", cache_id, output);
 
         // Create output file and XML writer
-        let file = File::create(output).context("Failed to create output file")?;
+        let file = File::create(output).map_err(|e| {
+            tracing::error!("Failed to create output file '{}': {}", output, e);
+            e
+        }).context("Failed to create output file")?;
         let buf_writer = BufWriter::new(file);
         let mut writer = Writer::new(buf_writer);
 
         // Write RSS
-        let count = self.write_rss(&mut writer, Some(start_date))?;
+        let count = self.write_rss(&mut writer, Some(start_date)).map_err(|e| {
+            tracing::error!("Failed to write RSS content to '{}': {}", output, e);
+            e
+        })?;
 
         tracing::info!("RSS feed written to {} with {} entries", output, count);
         Ok(())
@@ -674,7 +683,7 @@ impl MediaEntry {
             let idx = super::formatter::normalize_code(&self.index).to_string();
             evt = format!("{}-{}", evt, idx);
         }
-        let mut cd = contentDesc(&self.event_code, &self.event_desc);
+        let mut cd = content_desc(&self.event_code, &self.event_desc);
         if !cd.is_empty() { cd = format!(" {}", cd) };
         format!("{}{}", evt, cd).trim_start().to_string()
     }
@@ -688,7 +697,7 @@ impl MediaEntry {
         if !evt.is_empty() { evt = format!(" ({})", evt).to_string(); }
         let loc = super::formatter::normalize_location(&self.location);
         let mut sub = if self.event_desc.is_empty() { 
-            let cd = contentDesc(&self.event_code, &self.event_desc);
+            let cd = content_desc(&self.event_code, &self.event_desc);
             if cd.is_empty() { String::new() } else { format!(" {}", cd) }
         } else { 
             format!(" {}", self.event_desc.replace("M.V.", "Music Video")) 
@@ -844,7 +853,7 @@ pub fn parse_file_name(filename: &str) -> MediaEntry {
         }
         fi.event_desc = caps.get(5).map_or("", |m| m.as_str()).trim_matches('-').to_string();
         if fi.event_desc.is_empty() {
-            fi.event_desc = contentDesc(&fi.event_code, "");
+            fi.event_desc = content_desc(&fi.event_code, "");
         } else if let Some(caps_desc) = RE_ZSV_DESC_PATTERN.captures(&fi.event_desc) {
             fi.location = caps_desc.get(1).map_or("", |m| m.as_str()).to_string();
             fi.event_date_stamp = caps_desc.get(2).map_or("", |m| m.as_str()).to_string();
@@ -922,7 +931,7 @@ pub fn parse_file_name(filename: &str) -> MediaEntry {
         }
         fi.event_desc = caps.get(3).map_or("", |m| m.as_str()).trim_matches('-').to_string();
         if !fi.event_desc.is_empty() {
-            fi.event_desc = format!("{}_{}", contentDesc(&fi.event_code, ""), fi.event_desc);
+            fi.event_desc = format!("{}_{}", content_desc(&fi.event_code, ""), fi.event_desc);
             fi.event_desc = crate::models::formatter::format_eng_descr(&fi.event_desc);
         }
     }
@@ -930,8 +939,8 @@ pub fn parse_file_name(filename: &str) -> MediaEntry {
     fi
 }
 
-fn contentDesc(contentType: &str, event_desc: &str) -> String {
-    match contentType {
+fn content_desc(content_type: &str, event_desc: &str) -> String {
+    match content_type {
         "r" => "Report".to_string(),
         "v" => "Video".to_string(),
         "c" => {
@@ -947,13 +956,13 @@ fn contentDesc(contentType: &str, event_desc: &str) -> String {
         "s" => "Hymn".to_string(),
         "h" => "Grandpa".to_string(),
         "" => "".to_string(),
-        _ => format!("Type {}", contentType.to_uppercase()),
+        _ => format!("Type {}", content_type.to_uppercase()),
     }
 }
 
-fn default_language() -> String {
-    "en-us".to_string()
-}
+// fn default_language() -> String {
+//     "en-us".to_string()
+// }
 
 fn default_generator() -> String {
     "rss_writer".to_string()
@@ -983,7 +992,7 @@ fn default_base_output_path() -> String {
     "/ntc/tmp".to_string()
 }
 
-const PARALLEL_THRESHOLD: usize = 35000;
+//const PARALLEL_THRESHOLD: usize = 35000;
 
 lazy_static! {
     static ref RE_ZSV_PATTERN: Regex = Regex::new(r"^zsv(\d{6})(e?)-(\d{1,2}[a-z]{1,2}(?:&[a-z])?|\w+)(?:-(\d{1,2}z?)(?:-([^(.]+))?)?").expect("Invalid regex RE_ZSV_PATTERN");

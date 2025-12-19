@@ -179,10 +179,10 @@ impl Storage {
         let txn = self.db.begin_read()?;
         let table = txn.open_table(FILEDESC_TABLE)?;
         let mut entries = Vec::new();
-        let mut entryMap: HashMap<String, MediaEntry> = HashMap::new();
+        let mut entry_map: HashMap<String, MediaEntry> = HashMap::new();
         if let Some((ref cached_ch, _)) = cached_ch {
             for entry in &cached_ch.entries {
-                entryMap.insert(entry.normalized_event_id("zsv"), entry.clone());
+                entry_map.insert(entry.normalized_event_id("zsv"), entry.clone());
             }
         }
         for entry in &channel.entries {
@@ -205,7 +205,7 @@ impl Storage {
                     };
                 }
             }else if channel.copy_lang == "zh" {
-                if let Some(cached_entry) = entryMap.get(&key) {
+                if let Some(cached_entry) = entry_map.get(&key) {
                     entry.description = cached_entry.description.clone();
                 }
             }
