@@ -1,9 +1,7 @@
-use chrono::{NaiveDate, Weekday, Datelike};
-use std::fs;
-use webfs::models::files::parse_file_name;
 use webfs::models::auth::{SigningKeys, SignUrlRequest, SignUrlResponse};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut signing_keys = SigningKeys::new(3600, 3600);
     let req = SignUrlRequest::new("GET","https://example.com/files/report.pdf?user=alice");
 
@@ -13,13 +11,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Verify (should succeed)
     let verified_resp = SignUrlResponse::from_url("GET", &signed_resp.url)?;
-    let verified = signing_keys.verify_signed_url(&verified_resp)?;
+    let verified = signing_keys.verify_signed_url(&verified_resp).await?;
     println!("Verified: {}", verified);
 
     // Tamper with it (should fail)
     let tampered_url = signed_resp.url.replace("alice", "bob");
     let tampered_resp = SignUrlResponse::from_url("GET", &tampered_url)?;
-    match signing_keys.verify_signed_url(&tampered_resp) {
+    match signing_keys.verify_signed_url(&tampered_resp).await {
         Ok(_) => println!("❌ Verification failed!"),
         Err(e) => println!("✅ Tampered URL rejected: {}", e),
     }

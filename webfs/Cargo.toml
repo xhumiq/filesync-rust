@@ -9,7 +9,7 @@ name = "webfs"
 path = "src/lib.rs"
 
 [dependencies]
-axum = "0.8.7"
+axum = { version = "0.8.7", features = ["macros"] }
 docx-rs = "0.4"          # reads .docx files
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
@@ -48,6 +48,7 @@ sha2 = "0.10.9"
 nanoid = "0.4.0"
 rand = "0.9.2"
 url = "2.5.7"
+moka = { version = "0.12.11", features = ["future"] }
 
 [[bin]]
 name = "webfs"  # ← Custom executable name

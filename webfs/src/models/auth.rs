@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use axum::{extract::{}, http::{Uri, request, header::HeaderMap}};
+use serde_json;
+use axum::{http::{Uri, header::HeaderMap}};
 use super::files::FolderShare;
 use hmac::{Hmac, Mac};
 use nanoid::nanoid;
@@ -11,6 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Local, Utc};
 use rand::TryRngCore;
 use rand::rngs::OsRng;
+use moka::future::Cache;
+use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use base64::{Engine, engine::general_purpose};
 type HmacSha256 = Hmac<Sha256>;
@@ -47,9 +50,15 @@ impl AuthRequest {
             method: Some(method.to_string()),
             url: Some(uri.to_string()),
         };
-        let auth_header = headers
-            .get("authorization")
-            .and_then(|h| h.to_str().ok());
+
+        let headers_map: std::collections::HashMap<String, String> = headers.iter().filter_map(|(k, v)| {
+            Some((k.to_string(), v.to_str().ok()?.to_string()))
+        }).collect();
+        let headers_json = serde_json::to_string(&headers_map).unwrap_or_default();
+        tracing::debug!("Headers JSON: {}", headers_json);
+
+        let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+        tracing::debug!("Authorization: {} / {}", &auth_header.unwrap_or(""), &method);
         auth.jwt_token = auth_header.clone().and_then(|h| h.strip_prefix("Bearer ").map(|s| s.to_string()));
         if auth.jwt_token.is_none() {
             let cookie_header = headers.get("cookie").and_then(|h| h.to_str().ok());
@@ -76,7 +85,7 @@ impl AuthRequest {
     }
     pub fn basic_auth(&self) -> Option<BasicAuthRequest> {
         if let (Some(username), Some(password)) = (&self.username, &self.password) {
-            Some(BasicAuthRequest { username: username.clone(), password: password.clone() })
+            Some(BasicAuthRequest { username: username.clone(), password: password.clone(), use_cache: true })
         } else {
             None
         }
@@ -87,6 +96,8 @@ impl AuthRequest {
 pub struct BasicAuthRequest {
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    pub use_cache: bool
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,10 +105,26 @@ pub struct RefreshRequest {
     pub refresh_token: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
+pub struct AuthInfo {
+    pub claims: Claims,
+    pub folder: Option<FolderShare>,
+}
+
+impl  AuthInfo{
+    pub fn new(claims: Claims, folder: Option<FolderShare>) -> Self {
+        AuthInfo { claims, folder }
+    }
+    pub fn FromAuth(response: AuthResponse) -> Self {
+        AuthInfo { claims: response.claims, folder: response.folder }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct AuthResponse {
     pub jwt_token: String,
     pub refresh_token: Option<String>,
+    pub token_hash: String,
     pub expires_at: String,
     pub refresh_expires_at: String,
     pub claims: Claims,
@@ -212,7 +239,7 @@ impl SignUrlRequest {
 pub struct SignUrlResponse {
     pub id: String,
     pub url: String,
-    pub fs_id: String,
+    pub tid: String,
     pub method: String,
     pub key_id: String,
     pub signature: String,
@@ -224,7 +251,7 @@ impl SignUrlResponse {
         SignUrlResponse{
             id: req.id.clone(),
             url: req.url.clone(),
-            fs_id: String::new(),
+            tid: String::new(),
             method: req.method.clone(),
             key_id: String::new(),
             signature: String::new(),
@@ -237,7 +264,7 @@ impl SignUrlResponse {
         let mut resp = SignUrlResponse{
             id: String::new(),
             url: url.to_string(),
-            fs_id: String::new(),
+            tid: String::new(),
             method: method.to_string(),
             key_id: String::new(),
             signature: String::new(),
@@ -253,8 +280,8 @@ impl SignUrlResponse {
                 resp.expires_at = DateTime::<Utc>::from_timestamp(expires, 0).ok_or(anyhow!("Invalid timestamp"))?;
             } else if key == "id" {
                 resp.id = value;
-            } else if key == "fs_id" {
-                resp.fs_id = value;
+            } else if key == "tid" {
+                resp.tid = value;
             } else if key == "key_id" {
                 resp.key_id = value;
             }
@@ -265,7 +292,7 @@ impl SignUrlResponse {
 
 #[derive(Debug)]
 pub struct SigningKeys {
-    pub keys: HashMap<String, HmacSigningKey>,
+    pub keys: Cache<String, HmacSigningKey>,
     pub cur_key: Option<HmacSigningKey>,
     pub last_create: DateTime<Local>,
     pub domain: String,
@@ -284,7 +311,9 @@ impl SigningKeys {
             key_expires_in_secs = 60;
         }
         SigningKeys{
-            keys: HashMap::new(),
+            keys: Cache::builder().max_capacity(10_000)
+            .time_to_live(Duration::from_secs(900))  // 15 minutes
+            .build(),
             cur_key: None,
             domain: String::new(),
             last_create: Local::now().checked_sub_days(chrono::Days::new(365)).unwrap(),
@@ -309,8 +338,8 @@ impl SigningKeys {
         let key = self.current();
         key.generate_signed_url(request)
     }
-    pub fn verify_signed_url(&self, request: &SignUrlResponse) -> Result<url::Url> {
-        match self.keys.get(&request.key_id){
+    pub async fn verify_signed_url(&self, request: &SignUrlResponse) -> Result<url::Url> {
+        match self.keys.get(&request.key_id).await{
             Some(key) => {
                 if key.is_expired() {
                     return Err(anyhow!("Key is expired"));
@@ -415,7 +444,8 @@ impl HmacSigningKey {
         url_with_expires.query_pairs_mut()
             .append_pair("expires", &expires.to_string())
             .append_pair("id", &request.id)
-            .append_pair("key_id", &self.key_id);
+            .append_pair("key_id", &self.key_id)
+            .append_pair("tid", &self.key_id);
         
         // Canonical string (deterministic order matters!)
         let canonical_query = url_with_expires

@@ -1070,4 +1070,11 @@ pub struct FolderShare {
     pub link: String,
     pub base_file_path: String,
     pub group: String,
+    pub secret: String,
+}
+
+impl FolderShare{
+    pub fn access_token(&self) -> String {
+        format!("{}:{}", self.name, self.secret)
+    }
 }

@@ -1,7 +1,7 @@
 use axum::{
     Json, body::Body,
-    extract::{Path, State, Request, OriginalUri},
-    http::{Method, StatusCode, header::{self, HeaderMap}},
+    extract::{Path, State, OriginalUri, Request},
+    http::{Method, StatusCode, Uri, header::{self, HeaderMap}},
     response::{IntoResponse, Response}
 };
 use std::path::Path as StdPath;
@@ -30,21 +30,22 @@ pub async fn list_files_handler(
     method: Method,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let auth_request = AuthRequest::new(&uri, method.as_str(), &headers);
+    list_files(state, &path, &uri, method.as_str(), &headers).await
+}
+
+async fn list_files(
+    State(state): State<crate::AppState>,
+    path: &str,
+    uri: &Uri,
+    method: &str,
+    headers: &HeaderMap,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let auth_request = AuthRequest::new(uri, method, headers);
     let auth_request_clone = auth_request.clone();
     let mut fs_id = String::new();
-    match keycloak::check_auth(&state, &auth_request_clone).await {
-        Ok(auth_identity) => match auth_identity {
-            AuthIdentity::Claims(claims) => {
-                fs_id = AuthIdentity::Claims(claims).file_sys_id();
-            }
-            AuthIdentity::FileSysID(id) => {
-                fs_id = id;
-            }
-            AuthIdentity::None => {
-                tracing::info!("auth failed for {}", auth_request.url.as_ref().unwrap().clone());
-                return Err((StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "no token"}))))
-            }
+    match keycloak::check_auth(&state, &auth_request_clone, state.passwd.clone(), state.tokens.clone()).await {
+        Ok(auth) => {
+            fs_id = auth.folder.as_ref().and_then(|f| Some(f.name.clone())).unwrap_or(String::new());
         },
         Err((status, msg)) => {
             tracing::info!("auth failed for {}", auth_request.url.as_ref().unwrap().clone());
@@ -108,8 +109,6 @@ pub async fn list_files_handler(
     } else if path_obj.is_dir() {
         // Continue with listing
         tracing::info!("Listing files for path: {} {}", lang, full_path);
-
-
         let channel = if let Some(ch) = channel_opt {
             ch
         } else {

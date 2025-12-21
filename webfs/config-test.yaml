@@ -63,14 +63,16 @@ channels:
       filter_extension: ".mp3"
       output_path: "/ntc/tmp/audio-chi.rss"
 folders:
-  gjcc:
+  default:
+    name: "gjcc"
     title:
       en: "ZSF"
       zh: "新約教會"
       fr: "ZSF"
     link: "https://file.ziongjcc.org"
     base_file_path: "/home/mchu/"
-    group: "default"
+    group: "gjcc"
+    secret: Renew123!
   mttabor:
     title:
       en: "Mt Tabor"
@@ -79,3 +81,4 @@ folders:
     link: "https://file.ziongjcc.org"
     base_file_path: "/home/mchu/Videos/MtTabor"
     group: "mttabor"
+    secret: Renew123!

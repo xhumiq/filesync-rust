@@ -13,6 +13,8 @@ use tower_http::cors::CorsLayer;
 use webfs::models::files::Channel;
 use webfs::storage::Storage;
 use webfs::webfs::handler::*;
+use moka::future::Cache;
+use std::time::Duration;
 use std::env;
 
 #[tokio::main]
@@ -72,8 +74,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
-    let signing_keys = SigningKeys::new(3600 * 24 * 30, 3600); // 30 days key expire, 1 hour sig expire
-
     let state = AppState {
         keycloak_url,
         realm: std::env::var("REALM").map_err(|e| {
@@ -93,7 +93,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         config: config.clone(),
         channel_cache: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         storage: std::sync::Arc::new(std::sync::Mutex::new(storage)),
-        signing_keys: std::sync::Arc::new(std::sync::Mutex::new(signing_keys)),
+        passwd: Cache::builder().max_capacity(10_000)
+            .time_to_live(Duration::from_secs(900))  // 15 minutes
+            .build(),
+        tokens: Cache::builder().max_capacity(10_000)
+            .time_to_live(Duration::from_secs(900))  // 15 minutes
+            .build()
+        // content_cache: Cache::builder()
+        //     .max_capacity(100_000)
+        //     .time_to_live(Duration::from_secs(3600 * 24))  // 24 hours
+        //     .weigher(|_key, value| value.size as u32)  // If ContentData has a size field
+        //     .build(),
     };
 
     // Start file monitoring in background
@@ -123,8 +133,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/auth/v1/login", post(authenticate_handler))
         .route("/auth/v1/refresh", post(refresh_handler))
         .route("/auth/v1/signurl", post(signurl_handler))
-        .route("/auth/v1/nginx", get(nginx_handler))
         .route("/fs/v1/", get(list_files_root_handler))
+        .route("/auth/v1/nginx", get(nginx_handler))
         .route("/fs/v1/{*path}", get(list_files_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
